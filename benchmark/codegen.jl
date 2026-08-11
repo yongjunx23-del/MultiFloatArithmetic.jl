@@ -2,6 +2,12 @@ using InteractiveUtils
 using MultiFloatArithmetic
 using MultiFloats
 
+const CASES = (
+    (2, Float64x2),
+    (3, Float64x3),
+    (4, Float64x4),
+)
+
 @inline fused(x, y, c) = fma_fast(x, y, c)
 @inline separate(x, y, c) = x * y + c
 
@@ -18,9 +24,6 @@ function native_metrics(f, ::Type{T}) where {T}
         startswith(s, ".") && continue
         endswith(s, ":") && continue
         startswith(s, ";") && continue
-        # Intel-syntax instruction lines emitted by Julia begin with a mnemonic
-        # after whitespace. Keep this deliberately approximate: the diagnostic is
-        # for comparing the two implementations under the same compiler/runner.
         occursin(r"^[A-Za-z][A-Za-z0-9_.]*[ \t]", s) || continue
         push!(instructions, s)
     end
@@ -47,7 +50,7 @@ function show_pair(label, ::Type{T}) where {T}
 end
 
 println("Codegen diagnostics; relative indicators only")
-for (N, T) in enumerate((Float64x2, Float64x3, Float64x4))
+for (N, T) in CASES
     show_pair("$(T) scalar", T)
     V = MultiFloatVec{4,Float64,N}
     show_pair("$(T) Vec4", V)
