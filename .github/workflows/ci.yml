@@ -26,7 +26,7 @@ jobs:
         run: julia --project=. -e 'using Pkg; Pkg.test(; coverage=false)'
 
   smoke-benchmark:
-    name: FMA scalar/SIMD smoke and codegen
+    name: Arithmetic smoke and codegen
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,9 +36,11 @@ jobs:
       - uses: julia-actions/cache@v2
       - name: Instantiate
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
-      - name: Run scalar and Vec4 smoke benchmark
+      - name: Run scalar and Vec4 FMA smoke benchmark
         run: julia --project=. benchmark/smoke.jl
-      - name: Run SIMD-width smoke benchmark
+      - name: Run SIMD-width FMA smoke benchmark
         run: julia --project=. benchmark/simd_widths.jl
-      - name: Inspect codegen metrics
+      - name: Run quotient-digit division A/B
+        run: julia --project=. benchmark/division_digits.jl
+      - name: Inspect FMA codegen metrics
         run: julia --project=. benchmark/codegen.jl
