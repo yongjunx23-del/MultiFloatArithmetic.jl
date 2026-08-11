@@ -42,5 +42,7 @@ jobs:
         run: julia --project=. benchmark/simd_widths.jl
       - name: Run quotient-digit division A/B
         run: julia --project=. benchmark/division_digits.jl
+      - name: Run 2019 triple-word multiplication A/B
+        run: julia --project=. benchmark/tripleword_2019.jl
       - name: Inspect FMA codegen metrics
         run: julia --project=. benchmark/codegen.jl
