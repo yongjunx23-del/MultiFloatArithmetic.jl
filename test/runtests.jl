@@ -11,12 +11,28 @@ const CASES = (
 
 signed_rand(::Type{T}) where {T} = rand(Bool) ? rand(T) : -rand(T)
 
+function wide_rand(::Type{T}; emin=-400, emax=400) where {T}
+    x = signed_rand(T)
+    exponent = rand(emin:emax)
+    return T(ldexp(big(x), exponent))
+end
+
+function check_operand_relative_bound(z, x, y, c, limbs, constant, u)
+    xy = big(x) * big(y)
+    reference = xy + big(c)
+    scale = abs(xy) + abs(big(c))
+    err = abs(big(z) - reference)
+    bound = constant * u^limbs * scale
+    oracle_slack = eps(BigFloat) * max(scale, one(BigFloat))
+    return err <= bound + oracle_slack
+end
+
 @testset "branch-free fused FMA research kernels" begin
     Random.seed!(0x5d9a_2026)
-    setprecision(BigFloat, 768) do
+    setprecision(BigFloat, 1024) do
         u = BigFloat(2)^(-53)
         for (T, limbs, constant) in CASES
-            @testset "$(T) scalar" begin
+            @testset "$(T) ordinary scalar" begin
                 for _ in 1:2_000
                     x = signed_rand(T)
                     y = signed_rand(T)
@@ -25,14 +41,24 @@ signed_rand(::Type{T}) where {T} = rand(Bool) ? rand(T) : -rand(T)
 
                     @test MultiFloats.isnormalized(z)
                     @test z === fma_fast(y, x, c)
+                    @test check_operand_relative_bound(z, x, y, c, limbs, constant, u)
+                end
+            end
 
-                    xy = big(x) * big(y)
-                    reference = xy + big(c)
-                    err = abs(big(z) - reference)
-                    scale = abs(xy) + abs(big(c))
-                    bound = constant * u^limbs * scale
-                    oracle_slack = eps(BigFloat) * max(scale, one(BigFloat))
-                    @test err <= bound + oracle_slack
+            @testset "$(T) wide-exponent scalar" begin
+                # x and y each span about 800 binary exponents, while x*y stays
+                # safely away from Float64 overflow/underflow. This exercises the
+                # arithmetic network far beyond rand(T)'s default [0,1) scale.
+                for _ in 1:2_000
+                    x = wide_rand(T)
+                    y = wide_rand(T)
+                    c = wide_rand(T)
+                    z = fma_fast(x, y, c)
+
+                    @test isfinite(z)
+                    @test MultiFloats.isnormalized(z)
+                    @test z === fma_fast(y, x, c)
+                    @test check_operand_relative_bound(z, x, y, c, limbs, constant, u)
                 end
             end
 
@@ -47,24 +73,58 @@ signed_rand(::Type{T}) where {T} = rand(Bool) ? rand(T) : -rand(T)
                         @test vz[lane] === fma_fast(xs[lane], ys[lane], cs[lane])
                     end
                 end
+
+                for _ in 1:250
+                    xs = ntuple(_ -> wide_rand(T), 4)
+                    ys = ntuple(_ -> wide_rand(T), 4)
+                    cs = ntuple(_ -> wide_rand(T), 4)
+                    vz = fma_fast(V(xs), V(ys), V(cs))
+                    for lane in 1:4
+                        scalar = fma_fast(xs[lane], ys[lane], cs[lane])
+                        @test vz[lane] === scalar
+                        @test check_operand_relative_bound(
+                            scalar, xs[lane], ys[lane], cs[lane], limbs, constant, u)
+                    end
+                end
             end
         end
     end
 end
 
 @testset "destructive cancellation remains explicit" begin
-    setprecision(BigFloat, 768) do
-        for T in (MultiFloats.Float64x2, MultiFloats.Float64x3, MultiFloats.Float64x4)
+    Random.seed!(0xcafe_2026)
+    setprecision(BigFloat, 1024) do
+        u = BigFloat(2)^(-53)
+        cancellation_bits = (20, 50, 100, 150, 200)
+
+        for (T, limbs, constant) in CASES
+            # Deterministic known cancellation example.
             x = T(BigFloat("0.812345678901234567890123456789"))
             y = T(BigFloat("0.912345678901234567890123456789"))
             c = -T(big(x) * big(y))
             z = fma_fast(x, y, c)
             @test isfinite(z)
             @test z === fma_fast(y, x, c)
+            @test check_operand_relative_bound(z, x, y, c, limbs, constant, u)
 
-            # This intentionally does NOT assert a result-relative error bound.
-            # The fast FMA contract is relative to |x*y| + |c|, not |x*y+c|.
-            @test abs(big(z) - (big(x) * big(y) + big(c))) >= 0
+            # Controlled cancellation depth. We deliberately do not require
+            # isnormalized(z): the fast FMA contract is operand-relative and a
+            # strongly cancelled result may need explicit renormalization before
+            # it is fed into another multiplication.
+            for bits in cancellation_bits
+                δ = BigFloat(2)^(-bits)
+                for _ in 1:100
+                    x = wide_rand(T; emin=-200, emax=200)
+                    y = wide_rand(T; emin=-200, emax=200)
+                    xy = big(x) * big(y)
+                    c = T(-xy * (one(BigFloat) - δ))
+                    z = fma_fast(x, y, c)
+
+                    @test isfinite(z)
+                    @test z === fma_fast(y, x, c)
+                    @test check_operand_relative_bound(z, x, y, c, limbs, constant, u)
+                end
+            end
         end
     end
 end
