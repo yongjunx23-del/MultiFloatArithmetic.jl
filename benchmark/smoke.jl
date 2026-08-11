@@ -2,10 +2,10 @@ using MultiFloatArithmetic
 using MultiFloats
 using Random
 
-const TYPES = (
-    MultiFloats.Float64x2,
-    MultiFloats.Float64x3,
-    MultiFloats.Float64x4,
+const CASES = (
+    (2, MultiFloats.Float64x2),
+    (3, MultiFloats.Float64x3),
+    (4, MultiFloats.Float64x4),
 )
 
 function minimum_time(f; samples=7)
@@ -90,7 +90,7 @@ function benchmark_vec4(::Type{T}, ::Val{N}; scalar_count=20_000) where {T,N}
 end
 
 println("Hosted-runner smoke benchmark; informational, not a hard performance gate")
-for (N, T) in enumerate(TYPES)
+for (N, T) in CASES
     benchmark_scalar(T)
     benchmark_vec4(T, Val(N))
 end
