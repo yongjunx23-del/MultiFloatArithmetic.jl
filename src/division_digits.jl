@@ -1,9 +1,10 @@
 # Research candidate: quotient-digit division.
 #
-# This file deliberately changes only the OUTER division algorithm. Residual
-# products/subtractions still use MultiFloats v3's existing mfmul/mfadd
-# networks, so numerical behavior can be evaluated before introducing a new
-# half-to-full multiplication primitive.
+# The outer algorithm extracts one base-limb quotient digit at a time. Residual
+# products use the specialized expansion × one-limb network in mul_scalar.jl;
+# residual subtraction itself still uses MultiFloats v3's mfadd network. This
+# keeps the strong-cancellation part on an existing upstream arithmetic path
+# while removing the wasteful zero-padded N×N multiplication.
 
 @inline _one_limb_expansion(q::T, ::Val{N}) where {T,N} =
     ntuple(i -> isone(i) ? q : zero(T), Val{N}())
@@ -23,12 +24,7 @@
         qk = div_r(residual[1], y[1])
         digits = Base.setindex(digits, qk, k)
 
-        # Reference-quality residual update. This zero-padded product currently
-        # executes the full N×N mfmul network; a later research phase will
-        # replace it with a verified N×1/half-to-full product and fused residual
-        # subtraction if the quotient-digit outer algorithm proves worthwhile.
-        qexp = _one_limb_expansion(qk, Val{N}())
-        product = mfmul(y, qexp, Val{N}())
+        product = mul_scalar_limbs(y, qk, Val{N}())
         residual = mfadd(residual, map(-, product), Val{N}())
     end
 
