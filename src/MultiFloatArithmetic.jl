@@ -1,8 +1,10 @@
 module MultiFloatArithmetic
 
 using MultiFloats
-import MultiFloats: MultiFloat, MultiFloatVec, fast_two_sum, two_prod, two_sum
+import MultiFloats: MultiFloat, MultiFloatVec, div_r, fast_two_sum, mfadd, mfmul,
+    renormalize, two_prod, two_sum
 
+export div_digits, div_digits_limbs
 export fma_fast, fma_fast_limbs
 
 # Research kernels for branch-free fused multiply-add on fixed-length
@@ -150,5 +152,7 @@ end
         fma_fast_limbs(x._limbs, y._limbs, c._limbs),
     )
 end
+
+include("division_digits.jl")
 
 end # module
