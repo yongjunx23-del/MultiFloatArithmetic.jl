@@ -17,15 +17,56 @@ function min_time(f; samples=7)
     return best
 end
 
+@inline one_limb_expansion(q::T, ::Val{N}) where {T,N} =
+    ntuple(i -> isone(i) ? q : zero(T), Val{N}())
+
+@inline function div_digits_full_limbs(x::NTuple{N,T}, y::NTuple{N,T}) where {N,T}
+    residual = x
+    digits = ntuple(_ -> zero(T), Val{N}())
+    @inbounds for k in 1:N
+        qk = MultiFloats.div_r(residual[1], y[1])
+        digits = Base.setindex(digits, qk, k)
+        qexp = one_limb_expansion(qk, Val{N}())
+        product = MultiFloats.mfmul(y, qexp, Val{N}())
+        residual = MultiFloats.mfadd(residual, map(-, product), Val{N}())
+    end
+    return MultiFloats.renormalize(digits)
+end
+
+@inline div_digits_full(x::MultiFloat{T,N}, y::MultiFloat{T,N}) where {T,N} =
+    MultiFloat{T,N}(div_digits_full_limbs(x._limbs, y._limbs))
+
+@inline div_digits_full(x::MultiFloatVec{W,T,N}, y::MultiFloatVec{W,T,N}) where {W,T,N} =
+    MultiFloatVec{W,T,N}(div_digits_full_limbs(x._limbs, y._limbs))
+
+function report_division(label, specialized!, full!, upstream!)
+    specialized!(); full!(); upstream!()
+    ts = min_time(specialized!)
+    tf = min_time(full!)
+    tu = min_time(upstream!)
+    println("$(label): specialized=$(round(ts*1e3; digits=3)) ms, ",
+            "full=$(round(tf*1e3; digits=3)) ms, ",
+            "upstream=$(round(tu*1e3; digits=3)) ms, ",
+            "full/specialized=$(round(tf/ts; digits=3))x, ",
+            "upstream/specialized=$(round(tu/ts; digits=3))x")
+end
+
 function bench_scalar(::Type{T}; n=12_000) where {T}
     Random.seed!(0xd1a1_2026)
     xs = rand(T, n) .+ T(0.5)
     ys = rand(T, n) .+ T(0.5)
     out = similar(xs)
 
-    candidate!() = begin
+    specialized!() = begin
         @inbounds for i in eachindex(xs)
             out[i] = div_digits(xs[i], ys[i])
+        end
+        out
+    end
+
+    full!() = begin
+        @inbounds for i in eachindex(xs)
+            out[i] = div_digits_full(xs[i], ys[i])
         end
         out
     end
@@ -37,12 +78,7 @@ function bench_scalar(::Type{T}; n=12_000) where {T}
         out
     end
 
-    candidate!(); upstream!()
-    tc = min_time(candidate!)
-    tu = min_time(upstream!)
-    println("$(T) scalar: digits=$(round(tc*1e3; digits=3)) ms, ",
-            "upstream=$(round(tu*1e3; digits=3)) ms, ",
-            "upstream/digits=$(round(tu/tc; digits=3))x")
+    report_division("$(T) scalar", specialized!, full!, upstream!)
 end
 
 function pack_vec4(::Type{T}, ::Val{N}, scalars) where {T,N}
@@ -62,9 +98,16 @@ function bench_vec4(::Type{T}, ::Val{N}; scalar_lanes=12_000) where {T,N}
     ys = pack_vec4(T, Val(N), rand(T, scalar_lanes) .+ T(0.5))
     out = similar(xs)
 
-    candidate!() = begin
+    specialized!() = begin
         @inbounds for i in eachindex(xs)
             out[i] = div_digits(xs[i], ys[i])
+        end
+        out
+    end
+
+    full!() = begin
+        @inbounds for i in eachindex(xs)
+            out[i] = div_digits_full(xs[i], ys[i])
         end
         out
     end
@@ -76,12 +119,7 @@ function bench_vec4(::Type{T}, ::Val{N}; scalar_lanes=12_000) where {T,N}
         out
     end
 
-    candidate!(); upstream!()
-    tc = min_time(candidate!)
-    tu = min_time(upstream!)
-    println("$(T) Vec4: digits=$(round(tc*1e3; digits=3)) ms, ",
-            "upstream=$(round(tu*1e3; digits=3)) ms, ",
-            "upstream/digits=$(round(tu/tc; digits=3))x")
+    report_division("$(T) Vec4", specialized!, full!, upstream!)
 end
 
 println("Quotient-digit division research A/B; informational")
