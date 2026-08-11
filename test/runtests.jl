@@ -146,3 +146,6 @@ end
         end
     end
 end
+
+include("mul_scalar.jl")
+include("division_digits.jl")
