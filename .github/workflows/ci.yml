@@ -26,7 +26,7 @@ jobs:
         run: julia --project=. -e 'using Pkg; Pkg.test(; coverage=false)'
 
   smoke-benchmark:
-    name: FMA scalar/Vec4 smoke and codegen
+    name: FMA scalar/SIMD smoke and codegen
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,5 +38,7 @@ jobs:
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
       - name: Run scalar and Vec4 smoke benchmark
         run: julia --project=. benchmark/smoke.jl
+      - name: Run SIMD-width smoke benchmark
+        run: julia --project=. benchmark/simd_widths.jl
       - name: Inspect codegen metrics
         run: julia --project=. benchmark/codegen.jl

@@ -46,9 +46,6 @@ end
             end
 
             @testset "$(T) wide-exponent scalar" begin
-                # x and y each span about 800 binary exponents, while x*y stays
-                # safely away from Float64 overflow/underflow. This exercises the
-                # arithmetic network far beyond rand(T)'s default [0,1) scale.
                 for _ in 1:2_000
                     x = wide_rand(T)
                     y = wide_rand(T)
@@ -91,6 +88,32 @@ end
     end
 end
 
+@testset "SIMD width lane equivalence" begin
+    Random.seed!(0x51d0_2026)
+    setprecision(BigFloat, 1024) do
+        u = BigFloat(2)^(-53)
+        for (T, limbs, constant) in CASES
+            for W in (2, 4, 8)
+                V = MultiFloatVec{W,Float64,limbs}
+                @testset "$(T) Vec$(W)" begin
+                    for _ in 1:100
+                        xs = ntuple(_ -> wide_rand(T), W)
+                        ys = ntuple(_ -> wide_rand(T), W)
+                        cs = ntuple(_ -> wide_rand(T), W)
+                        vz = fma_fast(V(xs), V(ys), V(cs))
+                        for lane in 1:W
+                            scalar = fma_fast(xs[lane], ys[lane], cs[lane])
+                            @test vz[lane] === scalar
+                            @test check_operand_relative_bound(
+                                scalar, xs[lane], ys[lane], cs[lane], limbs, constant, u)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 @testset "destructive cancellation remains explicit" begin
     Random.seed!(0xcafe_2026)
     setprecision(BigFloat, 1024) do
@@ -98,7 +121,6 @@ end
         cancellation_bits = (20, 50, 100, 150, 200)
 
         for (T, limbs, constant) in CASES
-            # Deterministic known cancellation example.
             x = T(BigFloat("0.812345678901234567890123456789"))
             y = T(BigFloat("0.912345678901234567890123456789"))
             c = -T(big(x) * big(y))
@@ -107,10 +129,6 @@ end
             @test z === fma_fast(y, x, c)
             @test check_operand_relative_bound(z, x, y, c, limbs, constant, u)
 
-            # Controlled cancellation depth. We deliberately do not require
-            # isnormalized(z): the fast FMA contract is operand-relative and a
-            # strongly cancelled result may need explicit renormalization before
-            # it is fed into another multiplication.
             for bits in cancellation_bits
                 δ = BigFloat(2)^(-bits)
                 for _ in 1:100
