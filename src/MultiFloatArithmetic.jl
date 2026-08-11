@@ -6,6 +6,7 @@ import MultiFloats: MultiFloat, MultiFloatVec, div_r, fast_two_sum, mfadd, mfmul
 
 export div_digits, div_digits_limbs
 export fma_fast, fma_fast_limbs
+export mul_scalar, mul_scalar_limbs
 
 # Research kernels for branch-free fused multiply-add on fixed-length
 # MultiFloat expansions. T may be Float32/Float64 or the SIMD lane type used by
@@ -153,6 +154,7 @@ end
     )
 end
 
+include("mul_scalar.jl")
 include("division_digits.jl")
 
 end # module
