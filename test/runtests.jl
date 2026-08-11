@@ -149,3 +149,4 @@ end
 
 include("mul_scalar.jl")
 include("division_digits.jl")
+include("tripleword_2019.jl")
