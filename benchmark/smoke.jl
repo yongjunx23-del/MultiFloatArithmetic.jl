@@ -51,17 +51,6 @@ function benchmark_scalar(::Type{T}; n=20_000) where {T}
     report("$(T) scalar", fused!, separate!)
 end
 
-function pack_vec4(::Type{T}, xs::Vector{T}) where {T<:MultiFloat}
-    n = length(xs) ÷ 4
-    V = MultiFloatVec{4,Float64,length(T.parameters) == 0 ? 0 : T.parameters[2]}
-    out = Vector{V}(undef, n)
-    @inbounds for i in 1:n
-        base = 4 * (i - 1)
-        out[i] = V((xs[base + 1], xs[base + 2], xs[base + 3], xs[base + 4]))
-    end
-    return out
-end
-
 function benchmark_vec4(::Type{T}, ::Val{N}; scalar_count=20_000) where {T,N}
     Random.seed!(0x5d9a_2026)
     nvec = scalar_count ÷ 4
@@ -97,7 +86,7 @@ function benchmark_vec4(::Type{T}, ::Val{N}; scalar_count=20_000) where {T,N}
         out
     end
 
-    report("$(T) Vec4 ($(4nvec) scalar lanes)", fused!, separate!)
+    report("$(T) Vec4 ($(4 * nvec) scalar lanes)", fused!, separate!)
 end
 
 println("Hosted-runner smoke benchmark; informational, not a hard performance gate")
