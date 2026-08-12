@@ -32,23 +32,26 @@
         seed = ExperimentalArithmetic._inv8_seed_x4(x)
         one_step = ExperimentalArithmetic._inv8_direct_one_correction(x)
         two_step = ExperimentalArithmetic._inv8_direct_two_corrections(x)
+        three_step = ExperimentalArithmetic._inv8_direct_three_corrections(x)
         public = inv8(x)
 
         @test MultiFloats.isnormalized(seed)
         @test MultiFloats.isnormalized(one_step)
         @test MultiFloats.isnormalized(two_step)
-        @test public === two_step
+        @test MultiFloats.isnormalized(three_step)
+        @test public === three_step
 
-        # This is the sole numerical acceptance gate for the candidate. Residual
-        # rates below are diagnostics only; they must not mask whether the final
-        # x8 value equals the independent adaptive oracle.
-        @test two_step === oracle
+        # Sole numerical acceptance gate. One/two-step equality is diagnostic;
+        # three steps must equal the independent adaptive oracle bit-for-bit.
+        @test three_step === oracle
 
         r0 = abs(exact_residual(x, seed))
         r1 = abs(exact_residual(x, one_step))
         r2 = abs(exact_residual(x, two_step))
+        r3 = abs(exact_residual(x, three_step))
         @test r1 <= r0
         @test r2 <= r1
+        @test r3 <= r2
         return nothing
     end
 
