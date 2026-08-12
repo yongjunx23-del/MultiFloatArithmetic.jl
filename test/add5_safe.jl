@@ -81,20 +81,28 @@
             for depth in (53, 106, 159, 212, 265, 270, 300)
                 delta = pow2_rational(e - depth)
 
-                # Exact carry back to a power of two.
+                # Carry toward a power-of-two boundary. For perturbations deeper
+                # than the x5 representation, the constructed operand itself is
+                # rounded; require the exact identity only when the represented
+                # operands still sum to `base`.
                 x = T(base - delta)
                 y = T(delta)
                 z = check_add5_case(x, y)
-                @test z === T(base)
+                if Rational{BigInt}(x) + Rational{BigInt}(y) == base
+                    @test z === T(base)
+                end
 
-                # Cancellation of a low perturbation around the same boundary.
+                # Same representation-aware rule for cancellation around the
+                # upper side of the boundary.
                 x = T(base + delta)
                 y = T(-delta)
                 z = check_add5_case(x, y)
-                @test z === T(base)
+                if Rational{BigInt}(x) + Rational{BigInt}(y) == base
+                    @test z === T(base)
+                end
 
                 # Strongly unbalanced operands exercise term-ordering in the
-                # 10-term renormalization path.
+                # 10-term renormalization path at and below the x5 tail scale.
                 check_add5_case(T(base), T(delta))
                 check_add5_case(T(-base), T(delta))
             end
