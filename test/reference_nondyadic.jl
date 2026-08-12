@@ -77,6 +77,7 @@
         end
 
         @testset "Float64x$(N) exponent spread" begin
+            o = one(T)
             for e in (-500, -200, 0, 200, 500)
                 x = T(BigFloat(pow2_ref_nd(e)))
                 rx = ref_recip(x)
