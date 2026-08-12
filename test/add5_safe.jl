@@ -22,7 +22,7 @@
 
     function check_add5_case(x::T, y::T)
         z = add5(x, y)
-        full = ExperimentalArithmetic._add5_full_limbs(x._limbs, y._limbs)
+        full = ExperimentalArithmetic._add_safe_full_limbs(x._limbs, y._limbs)
         tail = ntuple(i -> full[i + 5], Val{5}())
 
         exact = Rational{BigInt}(x) + Rational{BigInt}(y)
@@ -81,10 +81,6 @@
             for depth in (53, 106, 159, 212, 265, 270, 300)
                 delta = pow2_rational(e - depth)
 
-                # Carry toward a power-of-two boundary. For perturbations deeper
-                # than the x5 representation, the constructed operand itself is
-                # rounded; require the exact identity only when the represented
-                # operands still sum to `base`.
                 x = T(base - delta)
                 y = T(delta)
                 z = check_add5_case(x, y)
@@ -92,8 +88,6 @@
                     @test z === T(base)
                 end
 
-                # Same representation-aware rule for cancellation around the
-                # upper side of the boundary.
                 x = T(base + delta)
                 y = T(-delta)
                 z = check_add5_case(x, y)
@@ -101,8 +95,6 @@
                     @test z === T(base)
                 end
 
-                # Strongly unbalanced operands exercise term-ordering in the
-                # 10-term renormalization path at and below the x5 tail scale.
                 check_add5_case(T(base), T(delta))
                 check_add5_case(T(-base), T(delta))
             end
