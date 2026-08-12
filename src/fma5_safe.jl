@@ -94,3 +94,6 @@ end
 
 # Load the generic x5-x8 direct-FMA family after freezing the x5 wrapper above.
 include("fma_safe.jl")
+
+# M6 direct-FMA x8 reciprocal candidate.
+include("inv8_safe.jl")
