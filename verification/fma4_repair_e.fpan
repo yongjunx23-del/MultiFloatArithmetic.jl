@@ -1,0 +1,24 @@
+# Candidate E: make both final-compression FastTwoSums general TwoSums, then
+# apply one fixed N=4 _renorm_pass. No input ordering assumptions.
+
+variable b
+variable a1
+variable a2
+variable a3
+
+# Cancellation-safe six-operation compression: all general TwoSum.
+two_sum b a1
+two_sum a1 a2
+two_sum a2 a3
+two_sum b a1
+two_sum a1 a2
+two_sum a2 a3
+
+# One N=4 _renorm_pass: (1,2), (3,4), then (2,3).
+two_sum b a1
+two_sum a2 a3
+two_sum a1 a2
+
+prove b strongly_dominates a1
+prove a1 strongly_dominates a2
+prove a2 strongly_dominates a3

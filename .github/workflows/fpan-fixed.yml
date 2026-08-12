@@ -1,4 +1,4 @@
-name: FPAN x4 repair A/B
+name: FPAN x4 all-TwoSum repair A/B
 
 on:
   pull_request:
@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        candidate: [fma4_repair_a, fma4_repair_b, fma4_repair_c]
+        candidate: [fma4_repair_d, fma4_repair_e]
         precision: [24, 53]
     steps:
       - uses: actions/checkout@v4
