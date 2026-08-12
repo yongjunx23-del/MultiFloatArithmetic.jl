@@ -9,8 +9,7 @@ candidates live in [`MultiFloatArithmetic.Experimental`](@ref).
 module MultiFloatArithmetic
 
 using MultiFloats
-import MultiFloats: MultiFloat, MultiFloatVec, fast_two_sum, renormalize,
-    two_prod, two_sum
+import MultiFloats: MultiFloat, MultiFloatVec, fast_two_sum, two_prod, two_sum
 
 export Experimental, fma_fast, fma_fast_limbs
 
@@ -150,32 +149,73 @@ end
     t1 = t1 + g5
     a3 = t3 + t1
 
-    # The original x4 network used FastTwoSum for (b, a1). FPANVerifier found
-    # that cancellation can violate its magnitude precondition. Use only general
-    # TwoSum transforms in the compression, then delegate final canonical
-    # non-overlap restoration to MultiFloats.renormalize. This is intentionally
-    # the conservative correctness baseline; a future fixed-cost replacement
-    # must prove source-specific intermediate bounds before promotion.
-    w0, w1 = two_sum(b, a1)
+    # Current arXiv:2607.11391 QW normalization: five fixed cascades over the
+    # four live words. FPANVerifier's FastTwoSum contract is exponent-order, not
+    # the stronger textbook |a| >= |b| condition. The gate placement below is
+    # the paper's proved fixed point: FTT / TTF / TFF / FFF / FFF. The former
+    # two-pass 146-flop variant preserves the component sum but does not carry a
+    # machine-proved full non-overlap guarantee under deep cancellation.
+
+    # Pass 1: F T T
+    w0, w1 = fast_two_sum(b, a1)
     w1, w2 = two_sum(w1, a2)
     w2, w3 = two_sum(w2, a3)
-    z0, rho = two_sum(w0, w1)
-    z1, sigma = two_sum(rho, w2)
-    z2, z3 = two_sum(sigma, w3)
-    return renormalize((z0, z1, z2, z3))
+
+    # Pass 2: T T F
+    w0, w1 = two_sum(w0, w1)
+    w1, w2 = two_sum(w1, w2)
+    w2, w3 = fast_two_sum(w2, w3)
+
+    # Pass 3: T F F
+    w0, w1 = two_sum(w0, w1)
+    w1, w2 = fast_two_sum(w1, w2)
+    w2, w3 = fast_two_sum(w2, w3)
+
+    # Pass 4: F F F
+    w0, w1 = fast_two_sum(w0, w1)
+    w1, w2 = fast_two_sum(w1, w2)
+    w2, w3 = fast_two_sum(w2, w3)
+
+    # Pass 5: F F F
+    z0, w1 = fast_two_sum(w0, w1)
+    z1, w2 = fast_two_sum(w1, w2)
+    z2, z3 = fast_two_sum(w2, w3)
+    return (z0, z1, z2, z3)
 end
 
 """
     fma_fast(x, y, c)
 
 Evaluate the 2-, 3-, or 4-limb fused multiply-add research kernel for scalar
-`MultiFloat` values or lane-wise for `MultiFloatVec` values. The x2/x3 paths are
-fixed-cost arithmetic networks; x4 currently ends in a conservative
-`renormalize` fallback.
+`MultiFloat` values or lane-wise for `MultiFloatVec` values. All three widths use
+fixed-cost arithmetic networks; the x4 path uses the five-pass QW normalization
+reproduced from the current arXiv:2607.11391 reference implementation.
 
 See `docs/NUMERICAL_CONTRACT.md` before using this operation in residual,
 refinement, stopping-criterion, or certificate code.
 """
+
+# Keep explicit x4 entry points in addition to the generic width dispatch. The
+# QW network is large enough that Julia 1.10 may otherwise fail to inline the
+# generic `where N` wrapper into scalar array loops, inhibiting the same loop
+# optimization obtained by the source-identical width-specialized audit kernel.
+# This does not change arithmetic or the limb-level network.
+@inline function fma_fast(
+    x::MultiFloat{T,4},
+    y::MultiFloat{T,4},
+    c::MultiFloat{T,4},
+) where {T}
+    return MultiFloat{T,4}(fma_fast_limbs(x._limbs, y._limbs, c._limbs))
+end
+
+@inline function fma_fast(
+    x::MultiFloatVec{W,T,4},
+    y::MultiFloatVec{W,T,4},
+    c::MultiFloatVec{W,T,4},
+) where {W,T}
+    return MultiFloatVec{W,T,4}(fma_fast_limbs(x._limbs, y._limbs, c._limbs))
+end
+
 @inline function fma_fast(
     x::MultiFloat{T,N},
     y::MultiFloat{T,N},
