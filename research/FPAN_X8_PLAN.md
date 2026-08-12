@@ -2,100 +2,99 @@
 
 Research-only until formal verification and numerical gates pass.
 
-## Acceptance contract
+## Core rule
 
-A future performance kernel must have normalized output, explicit discarded-tail
-bounds, required symmetries, adversarial exact-oracle agreement, proven
-FastTwoSum assumptions, and reproducible IEEE round-to-nearest behavior before
-branch-free minimization is considered.
-
-The x4 cancellation defect permanently sets the search order: **correctness and
-normalization before gate count**.
+The x4 cancellation defect permanently sets the search order: correctness,
+normalization, exact-oracle agreement, and explicit error accounting before
+branch-free/fixed-cost minimization. Every FastTwoSum must have a proved
+source-specific magnitude precondition.
 
 ## M2 exact oracle — complete baseline
 
 `Experimental.reference_add/sub/mul/fma` provides the independent x5-x8 rejection
-standard via exact `Rational{BigInt}` arithmetic and one final pack. CI
-cross-checks the pack against independent 8192-bit BigFloat results.
+standard via exact `Rational{BigInt}` arithmetic and one final pack.
 
 ## M3 addition — safe family complete baseline
 
-`Experimental.add_safe` covers Float64 x5-x8 with N same-index general TwoSums,
-full exact 2N-term renormalization, N-limb truncation, and head renormalization.
-No FastTwoSum is used.
-
-First maximum observed `|err|/(u^N(|x|+|y|))` values are ~0.0528336 (x5),
-~0.0254805 (x6), ~0.0109878 (x7), and ~0.00541727 (x8). C=1 remains an
-empirical regression gate, not a proof.
+`Experimental.add_safe` covers Float64 x5-x8 with exact 2N-term accumulation and
+full renormalization before N-limb truncation. First empirical constants in
+`u^N(|x|+|y|)` units are ~0.05283, 0.02548, 0.01099, and 0.00542 for x5-x8.
 
 ## M4 multiplication — safe family complete baseline
 
-`Experimental.mul_safe` covers Float64 x5-x8. For width N:
+`Experimental.mul_safe` covers Float64 x5-x8 by preserving all `2N^2` TwoProd
+components, canonicalizing their order, fully renormalizing, then truncating.
+First empirical relative constants are ~0.04841, 0.01837, 0.00726, and 0.00254.
 
-1. compute every N×N limb pair with TwoProd;
-2. preserve all rounded products and residuals (`2N^2` components);
-3. reject nonfinite/subnormal/underflowing pair components under the current
-   conservative domain;
-4. canonicalize signed zero and sort components so operand swap yields an
-   identical accumulation sequence;
-5. fully renormalize the exact component tuple;
-6. retain the N-limb head and renormalize it.
+## M5 direct FMA — Float64x5 safe baseline accepted
 
-No FastTwoSum is used.
+`Experimental.fma5_safe` deliberately does not call the rounded N-limb
+multiplication result. It combines:
 
-Permanent gates require exact pairwise TwoProd decomposition, exact returned-head
-+ discarded-tail reconstruction, bitwise `reference_mul` agreement,
-normalization, commutativity, exact identities/signs, and dense/scaled/boundary
-corpora.
+- all 50 exact x5 product/residual components from the 25 TwoProd pairs;
+- all five exact limbs of `c`;
+- deterministic canonical ordering;
+- one full renormalization of the resulting 55 components;
+- five-limb truncation only after the exact `x*y+c` expansion exists.
 
-First maximum observed `|err|/(u^N|xy|)` values are:
+Permanent gates require exact TwoProd reconstruction, exact 55-term head+tail
+accounting, normalized full/output expansions, `reference_fma` equality, x/y
+symmetry, identities, dense/scaled cases, powers of two, and deep destructive
+cancellation.
 
-- x5: ~0.0484069
-- x6: ~0.0183703
-- x7: ~0.00725543
-- x8: ~0.00253803
+First direct-FMA empirical max `|err|/(u^5(|xy|+|c|))` values were ~0.04568
+ordinary and ~0.04928 scaled, with zero direct oracle/normalization/symmetry
+failures.
 
-All measured width-specific diagnostics have zero oracle/normalization/
-commutativity failures. C=1 remains an empirical gate.
+### Why direct FMA is now mandatory research, not optional syntax
 
-### Add/mul proof work before minimization
+The rounded composition `add_safe(mul_safe(x,y),c)` disagreed with the exact
+`reference_fma` oracle in:
 
-Derive reviewable discarded-tail bounds for the common safe addition and
-multiplication constructions. Do not search fixed-cost add/mul networks merely
-because the empirical constants are small. Every component reordering or
-FastTwoSum substitution must preserve exact-oracle and symmetry gates and have a
-source-specific proof argument.
+- 45 / 200 ordinary cases;
+- 41 / 200 scaled cases;
+- 150 / 150 destructive-cancellation cases.
 
-## M5 direct FMA — next implementation milestone
+The direct path had zero oracle mismatches. Therefore separately correct add/mul
+baselines are not a substitute for direct FMA in cancellation-sensitive residual,
+refinement, or certificate work.
 
-Start with Float64x5 only. The first candidate should form an over-complete exact
-`x*y+c` expansion from:
+The initial direct correctness path is ~24% slower than the safe composition on
+the first Zen 3 timing sample; this is acceptable at the baseline stage.
 
-- all 25 TwoProd product/residual pairs used by M4;
-- all five addend limbs `c[i]` as exact components;
-- deterministic canonical ordering before full renormalization.
+### M5 next
 
-Then retain the five-limb head only after the complete 55-term expansion has
-been normalized.
+Generalize to one safe direct-FMA family for Float64 x5-x8. Width N should combine
+all `2N^2` product/residual components with N addend limbs, producing:
+
+- x5: 55 components;
+- x6: 78 components;
+- x7: 105 components;
+- x8: 136 components.
+
+For x6-x8 independently require:
+
+- exact pairwise TwoProd reconstruction;
+- exact direct FMA head+tail accounting;
+- bitwise `reference_fma` equality;
+- x/y symmetry and normalized output;
+- destructive-cancellation coverage;
+- separate empirical `u^N(|xy|+|c|)` constants;
+- direct-vs-rounded-composition mismatch telemetry;
+- explicit inherited underflow/overflow domain.
 
 Acceptance sequence:
 
-`fma5_safe -> exact component/head-tail/oracle/symmetry gates -> tail study ->
-safe fma6/fma7/fma8 -> formal bound -> fixed-cost direct-FMA search`.
+`fma5_safe -> safe fma6/fma7/fma8 -> formal direct-FMA tail analysis -> fixed-cost fused search`.
 
-`fma5_safe` must compare directly with `reference_fma`, not with `mul_safe` plus
-`add_safe`, so the oracle remains implementation-independent.
-
-Do not use the existing x2-x4 `fma_fast` networks as structural templates for
-x5; their fixed-cost assumptions belong to a different proof stage.
+Do not use the existing x2-x4 `fma_fast` networks as templates for x5-x8 fixed-
+cost structure before the safe direct family is complete.
 
 ## M6-M7 direction
 
-After safe/verified direct FMA exists:
-
-- M6: reciprocal/division/sqrt via 1->2->4->8 precision doubling, using accepted
-  add/mul/FMA primitives and stronger result-relative paths where needed;
-- M7: MultiFloatVec-native DOT/SYRK/TRSM/GEMM, then TRSM/Cholesky and downstream
-  solver A/B on residuals, certificates, time, and memory.
+- M6: reciprocal/division/sqrt via precision doubling, with direct FMA/submul for
+  residual corrections where it materially improves error propagation.
+- M7: MultiFloatVec-native DOT/SYRK/GEMM, then TRSM/Cholesky and downstream solver
+  A/B on iterations, residuals, certificates, time, and memory.
 
 Every discovered counterexample becomes a permanent regression test.

@@ -1,113 +1,123 @@
 # Project status
 
 Status date: **2026-08-12**
-Current milestone: **M4 baseline complete — safe Float64x5-x8 multiplication**
+Current milestone: **M5 — safe Float64x5 direct FMA baseline accepted**
 
 ## Executive assessment
 
-The project now has independent exact-oracle and correctness-first arithmetic
-baselines through eight Float64 limbs:
+The project now has correctness-first higher-limb baselines for addition and
+multiplication through Float64x8, and the first direct higher-limb FMA baseline at
+Float64x5.
 
-- x2/x3 fixed-cost FMA networks with pinned structural verification;
-- x3 proof-driven final-normalization repair;
-- x4 cancellation-safe TwoSum + `renormalize` FMA baseline;
-- exact-rational x5-x8 Experimental add/sub/mul/FMA oracles;
-- one common no-FastTwoSum safe addition family for Float64x5-x8;
-- one common no-FastTwoSum safe multiplication family for Float64x5-x8.
+- x2/x3 fixed-cost FMA networks have pinned structural verification;
+- x4 uses a cancellation-safe TwoSum + `renormalize` FMA baseline;
+- x5-x8 have exact-rational Experimental add/sub/mul/FMA oracles;
+- x5-x8 have common no-FastTwoSum safe addition and multiplication families;
+- Float64x5 now has a direct 55-component safe FMA baseline that combines exact
+  product components with the addend before any five-limb truncation.
 
-Formal discarded-tail proofs, fixed-cost high-limb networks, direct x5-x8 FMA,
-and native linear algebra remain future work.
+Formal high-limb tail proofs, fixed-cost x5-x8 add/mul/FMA, and native linear
+algebra remain future work.
 
-## M4 safe multiplication family
+## M5 Float64x5 direct FMA
 
-`Experimental.mul_safe` and wrappers `mul5_safe` ... `mul8_safe` use the same
-algorithm for width N:
+`Experimental.fma5_safe` does **not** implement FMA as `mul_safe` followed by
+`add_safe`. Instead it:
 
-1. evaluate all N^2 limb pairs with `two_prod`;
-2. retain every rounded product and residual, giving `2N^2` components;
-3. reject nonfinite/subnormal/underflowing pair components under the current
-   conservative domain;
-4. canonicalize signed zero and sort by deterministic `(abs(value), value)` key;
-5. fully renormalize the exact `2N^2`-term expansion;
-6. retain the N-limb head and renormalize it.
+1. obtains the exact 50 product/residual components from the 25 x5 TwoProd pairs;
+2. appends all five exact limbs of `c`;
+3. canonicalizes signed zeros and sorts the 55 components deterministically;
+4. fully renormalizes the combined exact `x*y+c` expansion;
+5. retains the leading five limbs and renormalizes the head.
 
-No FastTwoSum is used.
+No FastTwoSum is used. Product-side overflow/subnormal/underflow exclusions
+inherit the current M4 `mul_safe` contract.
 
-The permanent x5-x8 corpora check every accepted TwoProd pair with exact
-`Rational{BigInt}` arithmetic and require:
+The permanent corpus checks each TwoProd pair exactly and requires:
 
 ```text
-value(result) + value(discarded normalized tail) = value(x) * value(y)
+value(result) + value(discarded 50 normalized limbs)
+= value(x) * value(y) + value(c)
 ```
 
-They also require canonical term equality under operand swap, normalized full
-and returned expansions, bitwise `reference_mul` equality, bitwise
-commutativity, exact identities/sign cases, dense/scaled operands, and
-power/boundary products.
+It also requires normalized full/output expansions, bitwise equality with
+`reference_fma`, bitwise x/y symmetry, exact identities, dense/scaled inputs,
+power boundaries, and destructive cancellation beyond the nominal five-limb
+scale.
 
-All M4 width-specific unit gates are green on Linux Julia 1.10/current and macOS
-current.
-
-### First width-specific relative-error measurements
+### First direct-FMA diagnostic
 
 Zen 3, Julia 1.10.11:
 
-| Width | Max observed `|err|/(u^N|xy|)` | Informational scalar timing |
-|---|---:|---:|
-| x5 | 0.0484069 | 32.84 ms / 500 |
-| x6 | 0.0183703 | 5.059 ms / 40 |
-| x7 | 0.00725543 | 5.710 ms / 25 |
-| x8 | 0.00253803 | 4.492 ms / 12 |
+| Corpus | Cases | Direct oracle failures | Mul-then-add oracle failures | Max `|err|/(u^5(|xy|+|c|))` |
+|---|---:|---:|---:|---:|
+| dense ordinary | 200 | 0 | 45 | 0.0456757 |
+| scaled | 200 | 0 | 41 | 0.0492768 |
+| destructive cancellation | 150 | 0 | 150 | ~1.0e-67 |
 
-All dense/scaled diagnostics had zero oracle, normalization, and commutativity
-failures. Power-of-two boundary cases were exact. CI keeps a width-specific
-`C=1` empirical gate; it is not a theorem.
+The direct path had zero normalization and x/y-symmetry failures. Its maximum
+observed result-relative error was of order `1e-81` in these corpora.
 
-The timings are intentionally poor and use different case counts. The safe family
-allocates, sorts up to 128 components, and fully renormalizes them; it is a
-correctness source of truth, not a performance API.
+The composition result is the important M5 design signal: even though both
+`mul_safe` and `add_safe` independently match their operation-specific exact
+oracles, the intermediate five-limb multiplication rounding causes the composed
+`add_safe(mul_safe(x,y),c)` path to differ from the exact direct-FMA oracle in
+**100% of the destructive-cancellation diagnostic**.
 
-## Current multiplication domain
+CI uses `C=1` for the direct operand-relative metric as an empirical regression
+gate, not a theorem.
 
-The baseline accepts normalized finite Float64 N=5:8 values but deliberately
-rejects pair computations with:
+### First timing A/B
 
-- nonfinite TwoProd product/residual components;
-- nonzero subnormal products;
-- nonzero subnormal TwoProd residuals;
-- nonzero input pairs whose rounded product underflows to zero.
+For 120 Float64x5 cases on the same runner:
 
-This remains conservative until gradual-underflow semantics and exact TwoProd
-behavior are analyzed there.
+- direct 55-component safe FMA: **7.707 ms**;
+- safe multiplication followed by safe addition: **6.231 ms**;
+- composed/direct = **0.809x**.
+
+Thus the current direct correctness baseline is about 24% slower than the
+already-slow safe composition. M5 therefore prioritizes removal of the
+intermediate-rounding error first; fixed-cost direct-FMA optimization comes only
+after the safe family and formal tail analysis exist.
+
+## M4 safe multiplication family
+
+`Experimental.mul_safe` and `mul5_safe` ... `mul8_safe` keep all `2N^2` TwoProd
+components, canonicalize their order, fully renormalize, and truncate only after
+the exact product expansion is formed. No FastTwoSum is used.
+
+First max observed `|err|/(u^N|xy|)` values were 0.0484069 (x5), 0.0183703
+(x6), 0.00725543 (x7), and 0.00253803 (x8), with zero measured oracle,
+normalization, or commutativity failures.
 
 ## M3 safe addition family
 
 `Experimental.add_safe` and `add5_safe` ... `add8_safe` use N general TwoSums,
-full exact 2N-term renormalization, N-limb truncation, and head renormalization.
-No FastTwoSum is used.
-
-First max observed `|err|/(u^N(|x|+|y|))` values were 0.0528336 (x5),
-0.0254805 (x6), 0.0109878 (x7), and 0.00541727 (x8), all below the empirical
-C=1 gates.
+full 2N-term exact renormalization, N-limb truncation, and head renormalization.
+First max observed `|err|/(u^N(|x|+|y|))` values were 0.0528336, 0.0254805,
+0.0109878, and 0.00541727 for x5-x8.
 
 ## Current decisions
 
 | Component | Decision |
 |---|---|
-| x2/x3 fixed-cost FMA | structurally verified; scalar speedups are architecture-sensitive |
-| x4 FMA | cancellation-safe correctness baseline; SIMD still promising |
+| x2/x3 fixed-cost FMA | structurally verified; architecture-sensitive performance |
+| x4 FMA | cancellation-safe correctness baseline |
 | x5-x8 `reference_*` | exact Experimental oracle |
 | x5-x8 `add_safe` | accepted M3 Experimental correctness family |
 | x5-x8 `mul_safe` | accepted M4 Experimental correctness family |
-| fixed-cost high-limb add/mul | blocked on formal tail analysis |
-| direct x5-x8 FMA/submul | M5 next |
+| `fma5_safe` | accepted M5 Experimental direct-FMA correctness baseline |
+| mul-safe -> add-safe FMA composition | not an exact direct-FMA substitute; fails all tested destructive-cancellation oracle cases |
+| fixed-cost high-limb add/mul/FMA | formal tail analysis first |
+| safe direct FMA x6-x8 | next M5 step |
 | reciprocal/div/sqrt | M6 |
 | native DOT/SYRK/TRSM/GEMM | M7 |
 
 ## Immediate next milestone
 
-Start **M5 with a correctness-first Float64x5 direct FMA baseline**. Build an
-over-complete exact `x*y+c` expansion using the accepted multiplication
-components plus exact addend components, canonicalize and fully renormalize it,
-then require exact head+tail accounting and bitwise agreement with
-`reference_fma` before any fused product-network minimization.
+Generalize the direct-FMA construction to Float64x6, x7, and x8. Width N should
+combine all `2N^2` exact TwoProd product/residual components with N addend limbs,
+forming `2N^2+N` components (78, 105, and 136 for x6-x8), then fully normalize
+before N-limb truncation. Each width must independently pass exact head+tail,
+`reference_fma`, x/y-symmetry, destructive-cancellation, and empirical
+`u^N(|xy|+|c|)` gates before any fused-network minimization.
