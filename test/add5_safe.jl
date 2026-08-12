@@ -3,6 +3,7 @@
 
     T = MultiFloat{Float64,5}
     add5 = ExperimentalArithmetic.add5_safe
+    reference_add = ExperimentalArithmetic.reference_add
 
     function exact_limb_sum(limbs)
         total = zero(Rational{BigInt})
@@ -10,6 +11,13 @@
             total += Rational{BigInt}(limb)
         end
         return total
+    end
+
+    function pow2_rational(e::Int)
+        if e >= 0
+            return (BigInt(1) << e) // BigInt(1)
+        end
+        return BigInt(1) // (BigInt(1) << (-e))
     end
 
     function check_add5_case(x::T, y::T)
@@ -24,6 +32,7 @@
         @test MultiFloats.isnormalized(z)
         @test MultiFloats.isnormalized(full)
         @test represented + discarded == exact
+        @test z === reference_add(x, y)
         @test z === add5(y, x)
         return z
     end
@@ -59,13 +68,35 @@
                 qx = Rational{BigInt}(x)
                 lead = x._limbs[1]
                 e = iszero(lead) ? 0 : exponent(lead)
-                delta = if e >= bits
-                    (BigInt(1) << (e - bits)) // BigInt(1)
-                else
-                    BigInt(1) // (BigInt(1) << (bits - e))
-                end
+                delta = pow2_rational(e - bits)
                 y = T(-qx + (rand(Bool) ? delta : -delta))
                 check_add5_case(x, y)
+            end
+        end
+    end
+
+    @testset "power-of-two and carry boundaries" begin
+        for e in (-300, -50, -1, 0, 1, 50, 300)
+            base = pow2_rational(e)
+            for depth in (53, 106, 159, 212, 265, 270, 300)
+                delta = pow2_rational(e - depth)
+
+                # Exact carry back to a power of two.
+                x = T(base - delta)
+                y = T(delta)
+                z = check_add5_case(x, y)
+                @test z === T(base)
+
+                # Cancellation of a low perturbation around the same boundary.
+                x = T(base + delta)
+                y = T(-delta)
+                z = check_add5_case(x, y)
+                @test z === T(base)
+
+                # Strongly unbalanced operands exercise term-ordering in the
+                # 10-term renormalization path.
+                check_add5_case(T(base), T(delta))
+                check_add5_case(T(-base), T(delta))
             end
         end
     end
