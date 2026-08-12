@@ -135,3 +135,4 @@ end
 
 include("fma6_fma8_safe.jl")
 include("recip5_safe.jl")
+include("inv8_safe.jl")
