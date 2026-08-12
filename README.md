@@ -2,33 +2,50 @@
 
 [![CI](https://github.com/yongjunx23-del/MultiFloatArithmetic.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/yongjunx23-del/MultiFloatArithmetic.jl/actions/workflows/ci.yml)
 
-Verification-oriented arithmetic research kernels for
+Verification-oriented arithmetic and linear-algebra research kernels for
 [`MultiFloats.jl`](https://github.com/dzhang314/MultiFloats.jl).
 
-The package explores fixed-length arithmetic for future MultiFloat-native linear
-algebra and downstream solvers such as SDPX.jl. Correctness gates come before
+The project develops fixed-length MultiFloat arithmetic together with native
+DOT/GEMV/GEMM/SYRK/TRSM/factorization kernels for downstream high-precision
+solvers such as SDPX.jl. Correctness and representation contracts come before
 instruction-count wins.
 
 ## Current stage
 
-M3/M4/M5 correctness baselines now cover **Float64x5 through Float64x8** for
-addition, multiplication, and direct FMA.
+The project now has two distinct tiers.
 
-- x2/x3 have fixed-cost FMA structural verification;
-- x4 uses a cancellation-safe FMA fallback after a concrete FastTwoSum defect;
-- x5-x8 have exact-rational Experimental add/sub/mul/FMA oracles;
-- `add_safe` and `mul_safe` provide no-FastTwoSum x5-x8 correctness families;
-- `fma_safe` forms one exact direct `x*y+c` expansion before N-limb truncation
-  for N=5:8;
-- formal higher-limb tail bounds, fixed-cost high-limb networks, reciprocal/
-  division/sqrt, and native linear algebra remain future work.
+### Hot x2-x4 arithmetic and linear algebra
 
-The current high-limb safe implementations are correctness references, not hot
-kernels. In particular, the requested BigFloat comparison shows that the
-intentionally over-complete x8 safe multiplication is far slower than
-BigFloat512 and must be replaced before M7 performance integration.
+- x2/x3 use fixed-cost direct-FMA networks with structural verification;
+- x4 uses the audited five-pass QW normalization from the current
+  arXiv:2607.11391 algorithm rather than the former generic `renormalize`
+  fallback;
+- the x4 public dispatch is width-specialized so Julia emits the same class of
+  code as the standalone QW reproduction;
+- `MFLinearAlgebra` provides FMA-native `mfdot`, AXPY, GEMV, GEMM, SYRK,
+  TRSV/TRSM and Cholesky for Float32/Float64 N=2:4;
+- chained linear-algebra accumulators are checked against 1024-bit BigFloat and
+  must remain `MultiFloats.isnormalized`.
 
-See [STATUS.md](STATUS.md), [docs/REFERENCE_X5_X8.md](docs/REFERENCE_X5_X8.md),
+On the first Ice Lake linear-algebra snapshot, the simple column-major FMA GEMM
+was about **5.3-5.7x faster** than Julia/LinearAlgebra's generic MultiFloat path
+for Float64x2 and about **4.9-5.5x faster** for Float64x4 at n=16:48, before any
+panel packing or hand-written `MultiFloatVec` microkernel.
+
+### x5-x8 correctness baselines
+
+- exact-rational Experimental add/sub/mul/FMA oracles cover x5-x8;
+- `add_safe` and `mul_safe` provide no-FastTwoSum correctness families;
+- `fma_safe` forms one exact direct `x*y+c` expansion before N-limb truncation;
+- the higher-limb implementations are correctness references, not hot kernels.
+
+In particular, the intentionally over-complete x8 multiplication is much slower
+than BigFloat512 and must be replaced by a fixed-cost network before x5-x8 enter
+the linear-algebra backend.
+
+See [STATUS.md](STATUS.md), [docs/LINEAR_ALGEBRA.md](docs/LINEAR_ALGEBRA.md),
+[docs/NUMERICAL_CONTRACT.md](docs/NUMERICAL_CONTRACT.md),
+[docs/REFERENCE_X5_X8.md](docs/REFERENCE_X5_X8.md),
 [docs/ADD_SAFE_X5_X8.md](docs/ADD_SAFE_X5_X8.md),
 [docs/MUL_SAFE_X5_X8.md](docs/MUL_SAFE_X5_X8.md),
 [docs/FMA_SAFE_X5_X8.md](docs/FMA_SAFE_X5_X8.md), and
@@ -55,6 +72,39 @@ z = fma_fast(x, y, c)
 
 `fma_fast` supports 2-, 3-, and 4-limb values. It is an operand-relative research
 kernel, not a correctly rounded FMA.
+
+## MultiFloat-native linear algebra
+
+```julia
+using MultiFloats
+using MultiFloatArithmetic
+
+const LA = MultiFloatArithmetic.MFLinearAlgebra
+T = Float64x4
+
+A = rand(T, 64, 64)
+B = rand(T, 64, 64)
+C = LA.gemm(A, B)
+
+x = rand(T, 64)
+y = LA.gemv(A, x)
+d = LA.mfdot(x, y)
+
+S = LA.syrk(A)
+L = copy(S)
+LA.potrf!(L; uplo=:L)
+
+rhs = rand(T, 64, 4)
+LA.trsm!(L, rhs; uplo=:L)
+```
+
+The first dense backend supports Float32/Float64 x2-x4. GEMV/GEMM/SYRK use
+ordered chained FMA accumulators, while TRSM/Cholesky additionally use
+`MultiFloats.div_r` and `sqrt_r` for reproducible division and square root.
+
+No methods are added to external `LinearAlgebra.dot`/`mul!`; the namespaced API
+avoids type piracy. See [docs/LINEAR_ALGEBRA.md](docs/LINEAR_ALGEBRA.md) for the
+loop contract, validation, benchmarks and next microkernel layer.
 
 ## Higher-limb exact oracle
 
@@ -100,36 +150,30 @@ The permanent corpus requires exact full-expansion head+tail accounting,
 normalized output, bitwise x/y symmetry, and bitwise equality with
 `reference_fma`, including deep destructive cancellation.
 
-First Zen 3 maximum observed `|err|/(u^N(|xy|+|c|))` values were approximately:
+First maximum observed `|err|/(u^N(|xy|+|c|))` values were approximately:
 
 - x5: 0.04928
 - x6: 0.02276
 - x7: 0.00452
 - x8: 0.000826
 
-The reason for keeping a direct FMA is empirical and strong: the rounded
-composition `add_safe(mul_safe(x,y),c)` disagreed with the direct exact-FMA oracle
-in every destructive-cancellation case tested at x5, x6, x7, and x8, while the
-direct path had zero oracle mismatches.
-
-The safe direct implementation is still slower than safe mul-then-add. M5 freezes
-correctness first; fixed-cost fused optimization follows formal tail/error
-analysis.
+The rounded composition `add_safe(mul_safe(x,y),c)` disagreed with the direct
+exact-FMA oracle in every destructive-cancellation case tested at x5-x8, while
+the direct path had zero oracle mismatches. The current high-limb direct FMA is
+therefore a correctness baseline that still needs a smaller fixed-cost network.
 
 ## BigFloat versus MultiFloat comparison
 
-A permanent benchmark compares the requested practical pairs:
+A permanent benchmark compares:
 
 - BigFloat128 vs Float64x2 (~106 nominal significand bits),
 - BigFloat256 vs Float64x4 (~212 bits),
 - BigFloat512 vs Float64x8 (~424 bits).
 
 The BigFloat settings have about 20.8% more nominal precision, so speed and
-precision are reported together. On the first Zen 3 snapshot, original upstream
-MultiFloats x2/x4 arithmetic had large throughput advantages over BigFloat128/256,
-while the current correctness-only x8 safe multiplication was about 3,600x
-slower than BigFloat512. See the comparison document for methodology and exact
-numbers.
+precision are reported together. Original upstream x2/x4 arithmetic has large
+throughput advantages over BigFloat128/256, whereas the current correctness-only
+x8 multiplication is far slower than BigFloat512.
 
 ## Experimental namespace
 
@@ -147,6 +191,8 @@ include("benchmark/smoke.jl")
 include("benchmark/simd_widths.jl")
 include("benchmark/fma3_repair.jl")
 include("benchmark/fma4_safe.jl")
+include("benchmark/paper2607_v4_audit.jl")
+include("benchmark/linear_algebra.jl")
 include("benchmark/add5_safe.jl")
 include("benchmark/add6_add8_safe.jl")
 include("benchmark/mul5_safe.jl")
@@ -160,13 +206,17 @@ include("benchmark/codegen.jl")
 
 ## Roadmap
 
-1. Derive formal discarded-tail/error bounds for safe x5-x8 add/mul/FMA and use
-   them to drive smaller verified fixed-cost networks, with x8 multiplication a
-   priority because the current correctness baseline is extremely slow.
-2. **M6:** reciprocal/division/sqrt correctness baselines via precision doubling
-   and direct residual correction where useful.
-3. **M7:** MultiFloatVec-native DOT/SYRK/TRSM/GEMM and downstream solver A/B only
-   after competitive arithmetic survivors exist.
+1. Add explicit `MultiFloatVec` GEMM microkernels (W=4/8 first), B-panel packing,
+   and benchmark-derived MC/KC/NC blocking while preserving one accumulator's
+   ordered reduction.
+2. Build blocked SYRK/TRSM/POTRF from the same kernels and add threaded outer
+   panel scheduling.
+3. Add transpose routes, LDLT/pivoting, solve/refine primitives and KKT-oriented
+   structured kernels for optimization workloads.
+4. Derive smaller formally justified x5-x8 arithmetic networks; only competitive
+   survivors enter the linear-algebra layer.
+5. A/B the backend inside SDPX.jl on correctness, iterations, time, RSS and
+   certification residuals.
 
 Research software; passing CI is reproducible evidence, not a production/formal
 guarantee.
