@@ -19,9 +19,13 @@ permissions:
 
 jobs:
   verify-fpan:
-    name: x2-x4 structural proof obligations
+    name: ${{ matrix.spec }} structural proof obligations
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        spec: [fma2, fma3, fma4]
     steps:
       - uses: actions/checkout@v4
       - name: Check out pinned FPANVerifier
@@ -38,13 +42,19 @@ jobs:
           python3 -m pip install --disable-pip-version-check z3-solver==4.13.4.0
           z3 --version
           python3 -c 'import z3; print("Python Z3:", z3.get_version_string())'
-      - name: Verify source-mirrored FPANs
-        run: bash verification/run_fpan.sh .verification-tools/FPANVerifier
+      - name: Verify source-mirrored FPAN
+        env:
+          FPAN_LOG: fpan-${{ matrix.spec }}.log
+          FPAN_TIMEOUT_SECONDS: '180'
+        run: >-
+          bash verification/run_fpan.sh
+          .verification-tools/FPANVerifier
+          verification/${{ matrix.spec }}.fpan
       - name: Upload verification log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fpan-verification-log
-          path: fpan-verification.log
+          name: fpan-${{ matrix.spec }}-log
+          path: fpan-${{ matrix.spec }}.log
           if-no-files-found: error
           retention-days: 30
