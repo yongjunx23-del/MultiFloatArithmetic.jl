@@ -6,9 +6,6 @@ using Printf
 
 const MFLA = MultiFloatArithmetic.MFLinearAlgebra
 
-# Experimental scheduling layer: benchmark it before package promotion.
-include(joinpath(@__DIR__, "..", "src", "linear_algebra_blocked.jl"))
-
 function minimum_time(f; samples=5)
     f()
     best = Inf
@@ -131,10 +128,13 @@ function check_potrf_remainder()
     A = make_spd_x4(73)
     ref = copy(A)
     blocked = copy(A)
+    public = copy(A)
     MFLA._potrf_unblocked_kernel!(ref)
-    MFLA._potrf_blocked_vec8!(blocked, Val(16))
+    MFLA._potrf_blocked_vec8!(blocked, Val(8))
+    MFLA.potrf!(public; uplo=:L)
     @assert _bitwise_same(blocked, ref)
-    @assert all(MultiFloats.isnormalized, blocked)
+    @assert _bitwise_same(public, ref)
+    @assert all(MultiFloats.isnormalized, public)
 end
 
 function bench_potrf_x4(n)
@@ -150,6 +150,9 @@ function bench_potrf_x4(n)
         @assert _bitwise_same(X, ref)
         @assert all(MultiFloats.isnormalized, X)
     end
+    P = copy(A)
+    MFLA.potrf!(P; uplo=:L)
+    @assert _bitwise_same(P, ref)
 
     scratch0 = similar(A)
     base!() = begin
@@ -158,7 +161,14 @@ function bench_potrf_x4(n)
     end
     t0 = minimum_time(base!; samples=4)
 
-    @printf("  POTRF x4 n=%d: unblocked=%8.3f ms", n, 1e3t0)
+    scratchp = similar(A)
+    public!() = begin
+        copyto!(scratchp, A)
+        MFLA.potrf!(scratchp; uplo=:L)
+    end
+    tp = minimum_time(public!; samples=4)
+
+    @printf("  POTRF x4 n=%d: public=%8.3f ms (%5.2fx), unblocked=%8.3f ms", n, 1e3tp, t0/tp, 1e3t0)
     for bs in block_sizes
         scratch = similar(A)
         run!() = begin
@@ -184,7 +194,7 @@ for M in (Float64x2, Float64x4)
     end
 end
 
-println("Float64x4 Cholesky scheduling experiment")
+println("Float64x4 Cholesky public-dispatch benchmark")
 check_potrf_remainder()
 for n in (32, 64, 96)
     bench_potrf_x4(n)
