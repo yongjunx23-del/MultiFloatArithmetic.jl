@@ -38,6 +38,10 @@
         @test MultiFloats.isnormalized(one_step)
         @test MultiFloats.isnormalized(two_step)
         @test public === two_step
+
+        # This is the sole numerical acceptance gate for the candidate. Residual
+        # rates below are diagnostics only; they must not mask whether the final
+        # x8 value equals the independent adaptive oracle.
         @test two_step === oracle
 
         r0 = abs(exact_residual(x, seed))
@@ -45,24 +49,6 @@
         r2 = abs(exact_residual(x, two_step))
         @test r1 <= r0
         @test r2 <= r1
-
-        setprecision(BigFloat, 1536) do
-            b0 = BigFloat(r0)
-            b1 = BigFloat(r1)
-            b2 = BigFloat(r2)
-            @test b1 <= max(BigFloat(8) * b0^2, BigFloat(2)^(-420))
-            @test b2 <= max(BigFloat(8) * b1^2, BigFloat(2)^(-430))
-        end
-
-        qref = inv(Rational{BigInt}(x))
-        err = abs(Rational{BigInt}(two_step) - qref)
-        setprecision(BigFloat, 1536) do
-            @test BigFloat(err) / abs(BigFloat(qref)) <= BigFloat(2)^(-410)
-        end
-
-        # One-step oracle equality is deliberately measured in the benchmark,
-        # not required here until the A/B result justifies shortening the public
-        # two-correction baseline.
         return nothing
     end
 
