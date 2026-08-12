@@ -1,36 +1,119 @@
 # MultiFloatArithmetic.jl
 
-Experimental, verification-oriented arithmetic kernels for [`MultiFloats.jl`](https://github.com/dzhang314/MultiFloats.jl).
+[![CI](https://github.com/yongjunx23-del/MultiFloatArithmetic.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/yongjunx23-del/MultiFloatArithmetic.jl/actions/workflows/ci.yml)
 
-The project is intentionally small and research-first. Its immediate goal is to evaluate branch-free fused multiply-add (FMA/MAC) arithmetic for `Float64x2`, `Float64x3`, and `Float64x4`, then use the same methodology to explore provably-correct higher-limb arithmetic and a dedicated MultiFloat linear algebra backend.
+Verification-oriented arithmetic research kernels for
+[`MultiFloats.jl`](https://github.com/dzhang314/MultiFloats.jl).
 
-## Current scope
+The package is focused on fixed-length, branch-free arithmetic that can later
+support a MultiFloat-native linear algebra backend and downstream solvers such
+as SDPX.jl. It is deliberately conservative: a kernel is not promoted merely
+because randomized tests pass or its instruction count is smaller.
 
-- `Float64x2`, `Float64x3`, `Float64x4` fused multiply-add research kernels.
-- Scalar and `MultiFloatVec` execution through the same arithmetic network.
-- BigFloat differential testing.
-- Commutativity and SIMD lane-equivalence checks.
-- Explicit destructive-cancellation tests.
-- Lightweight hosted-runner timing for `fma_fast(x,y,c)` versus `x*y+c`.
+## Current stage
+
+The project is at **M1: empirical validation and API freeze for x2/x3/x4 fused
+multiply-add**. The x5-x8 reference path, formal verification, higher-limb
+multiplication/division, and native linear algebra backend have not yet been
+implemented.
+
+The 2026-08-11 hosted-runner study produced these decisions:
+
+- keep the x2 scalar FMA as a performance candidate;
+- keep x3/x4 scalar FMA opt-in because they regressed on that runner;
+- continue the SIMD FMA path, which improved all tested Vec2/Vec4/Vec8 cases;
+- retain quotient-digit division only under `Experimental`, because upstream
+  division was faster in every tested scalar and Vec4 case.
+
+See [STATUS.md](STATUS.md) for the measurements and acceptance state.
+
+## Installation
+
+The package is not registered. Install it directly from GitHub:
+
+```julia
+using Pkg
+Pkg.add(url="https://github.com/yongjunx23-del/MultiFloatArithmetic.jl")
+```
+
+## Accepted top-level API
+
+```julia
+using MultiFloats
+using MultiFloatArithmetic
+
+x = Float64x4(BigFloat("1.234567890123456789"))
+y = Float64x4(BigFloat("0.987654321098765432"))
+c = Float64x4(BigFloat("0.125"))
+
+z = fma_fast(x, y, c)
+```
+
+`fma_fast` supports `Float64x2`, `Float64x3`, `Float64x4`, and matching
+`MultiFloatVec` values. The implementation is generic enough for binary32 and
+has smoke coverage there, but the present optimization target and benchmark
+decisions are binary64.
 
 ## Numerical contract
 
-The current `fma_fast` path is an **operand-relative** fast FMA research kernel. It must not be interpreted as a correctly-rounded or strong result-relative FMA under severe cancellation. Cancellation-sensitive residual, refinement, and certification code should keep a stronger arithmetic path unless and until a stronger formal contract is established.
+`fma_fast` is an **operand-relative** FMA research kernel. It is not a
+correctly-rounded FMA and does not provide a strong result-relative guarantee
+under destructive cancellation. Do not use it by default in residual,
+refinement, stopping-criterion, or certification code.
 
-The arithmetic network must not be algebraically reordered or silently contracted by the compiler without re-verification.
+The arithmetic network must not be algebraically reordered, contracted beyond
+the explicit error-free transforms, or compiled under `@fastmath` without
+re-verification. Read [docs/NUMERICAL_CONTRACT.md](docs/NUMERICAL_CONTRACT.md)
+before downstream integration.
+
+## Experimental namespace
+
+Rejected or not-yet-accepted candidates remain available only for reproducible
+research:
+
+```julia
+using MultiFloats
+using MultiFloatArithmetic
+
+x = Float64x4(1.25)
+y = Float64x4(0.75)
+
+z = MultiFloatArithmetic.Experimental.div_digits(x, y)
+```
+
+The `Experimental` API may change without deprecation during the 0.x series and
+must not be treated as the package's performance recommendation.
+
+## Reproducing the evidence
+
+```julia
+using Pkg
+Pkg.test("MultiFloatArithmetic")
+
+include("benchmark/smoke.jl")
+include("benchmark/simd_widths.jl")
+include("benchmark/division_digits.jl")
+include("benchmark/codegen.jl")
+```
+
+Hosted-runner timings are informational. A downstream kernel should be accepted
+only after architecture-specific repeated measurements and an end-to-end solver
+A/B.
 
 ## Roadmap
 
-1. Validate and benchmark x2/x3/x4 fused arithmetic.
-2. Build counterexample-guided and verifier-compatible search tooling for x5-x8 arithmetic.
-3. Develop `MultiFloatVec`-native DOT/SYRK/TRSM/GEMM kernels.
-4. Build a standalone `MultiFloatLinearAlgebra.jl`-style backend.
-5. Integrate only validated kernels into downstream solvers such as SDPX.jl.
+1. Freeze x2/x3/x4 behavior and preserve a permanent adversarial corpus.
+2. Translate the accumulation networks into verifier inputs and obtain formal
+   non-overlap/error-bound evidence.
+3. Build a correctness-first x5 reference path before optimizing x5-x8.
+4. Add verified multiplication and direct FMA incrementally from x5 to x8.
+5. Implement reciprocal/division/square root through precision doubling.
+6. Build `MultiFloatVec`-native DOT/SYRK/TRSM/GEMM kernels.
+7. Integrate only accepted kernels into downstream solvers.
 
-## Status
+## Status and license
 
-Research software. No arithmetic kernel should be treated as production-ready solely because randomized tests pass; formal error-bound/non-overlap verification and adversarial testing are separate acceptance gates.
-
-## License
+This remains research software. Passing CI establishes reproducible empirical
+evidence, not a formal proof or production guarantee.
 
 MIT.

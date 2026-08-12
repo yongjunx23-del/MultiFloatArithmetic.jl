@@ -6,28 +6,41 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   correctness:
-    name: Julia ${{ matrix.julia-version }} correctness
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Julia ${{ matrix.julia-version }} correctness
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        julia-version: ['1.10', '1']
+        include:
+          - os: ubuntu-latest
+            julia-version: '1.10'
+          - os: ubuntu-latest
+            julia-version: '1'
+          - os: macos-latest
+            julia-version: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.julia-version }}
       - uses: julia-actions/cache@v2
+      - name: Version information
+        run: julia --project=. -e 'using InteractiveUtils; versioninfo()'
       - name: Instantiate
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
-      - name: Test
-        run: julia --project=. -e 'using Pkg; Pkg.test(; coverage=false)'
+      - name: Test with bounds checking
+        run: julia --check-bounds=yes --project=. -e 'using Pkg; Pkg.test(; coverage=false)'
 
   smoke-benchmark:
     name: Arithmetic smoke and codegen
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
@@ -40,7 +53,7 @@ jobs:
         run: julia --project=. benchmark/smoke.jl
       - name: Run SIMD-width FMA smoke benchmark
         run: julia --project=. benchmark/simd_widths.jl
-      - name: Run quotient-digit division A/B
+      - name: Run rejected quotient-digit division A/B
         run: julia --project=. benchmark/division_digits.jl
       - name: Inspect FMA codegen metrics
         run: julia --project=. benchmark/codegen.jl

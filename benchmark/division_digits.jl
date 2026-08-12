@@ -2,6 +2,8 @@ using MultiFloatArithmetic
 using MultiFloats
 using Random
 
+const ExperimentalArithmetic = MultiFloatArithmetic.Experimental
+
 const DIV_CASES = (
     (2, Float64x2),
     (3, Float64x3),
@@ -59,7 +61,7 @@ function bench_scalar(::Type{T}; n=12_000) where {T}
 
     specialized!() = begin
         @inbounds for i in eachindex(xs)
-            out[i] = div_digits(xs[i], ys[i])
+            out[i] = ExperimentalArithmetic.div_digits(xs[i], ys[i])
         end
         out
     end
@@ -100,7 +102,7 @@ function bench_vec4(::Type{T}, ::Val{N}; scalar_lanes=12_000) where {T,N}
 
     specialized!() = begin
         @inbounds for i in eachindex(xs)
-            out[i] = div_digits(xs[i], ys[i])
+            out[i] = ExperimentalArithmetic.div_digits(xs[i], ys[i])
         end
         out
     end
@@ -122,7 +124,7 @@ function bench_vec4(::Type{T}, ::Val{N}; scalar_lanes=12_000) where {T,N}
     report_division("$(T) Vec4", specialized!, full!, upstream!)
 end
 
-println("Quotient-digit division research A/B; informational")
+println("Rejected quotient-digit division A/B; informational and retained for reproducibility")
 println("CPU: ", Sys.CPU_NAME)
 for (N, T) in DIV_CASES
     bench_scalar(T)

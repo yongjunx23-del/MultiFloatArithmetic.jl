@@ -3,10 +3,18 @@ using MultiFloats
 using Random
 using Test
 
+const ExperimentalArithmetic = MultiFloatArithmetic.Experimental
+
 const CASES = (
     (MultiFloats.Float64x2, 2, BigFloat(34)),
     (MultiFloats.Float64x3, 3, BigFloat(184)),
     (MultiFloats.Float64x4, 4, BigFloat(812)),
+)
+
+const FLOAT32_CASES = (
+    (MultiFloats.Float32x2, 2, BigFloat(34)),
+    (MultiFloats.Float32x3, 3, BigFloat(184)),
+    (MultiFloats.Float32x4, 4, BigFloat(812)),
 )
 
 signed_rand(::Type{T}) where {T} = rand(Bool) ? rand(T) : -rand(T)
@@ -25,6 +33,22 @@ function check_operand_relative_bound(z, x, y, c, limbs, constant, u)
     bound = constant * u^limbs * scale
     oracle_slack = eps(BigFloat) * max(scale, one(BigFloat))
     return err <= bound + oracle_slack
+end
+
+@testset "public API boundary" begin
+    public_names = names(MultiFloatArithmetic; all=false, imported=false)
+    experimental_names = names(ExperimentalArithmetic; all=false, imported=false)
+
+    @test :fma_fast in public_names
+    @test :fma_fast_limbs in public_names
+    @test :Experimental in public_names
+    @test :div_digits ∉ public_names
+    @test :mul_scalar ∉ public_names
+    @test :div_digits in experimental_names
+    @test :mul_scalar in experimental_names
+
+    T5 = MultiFloat{Float64,5}
+    @test_throws ArgumentError fma_fast(T5(1.0), T5(1.0), T5(0.0))
 end
 
 @testset "branch-free fused FMA research kernels" begin
@@ -59,6 +83,14 @@ end
                 end
             end
 
+            @testset "$(T) exact identities" begin
+                z = zero(T)
+                o = one(T)
+                @test fma_fast(z, o, o) == o
+                @test fma_fast(o, o, z) == o
+                @test iszero(fma_fast(o, o, -o))
+            end
+
             @testset "$(T) Vec4 lane equivalence" begin
                 V = MultiFloatVec{4,Float64,limbs}
                 for _ in 1:250
@@ -82,6 +114,37 @@ end
                         @test check_operand_relative_bound(
                             scalar, xs[lane], ys[lane], cs[lane], limbs, constant, u)
                     end
+                end
+            end
+        end
+    end
+end
+
+@testset "Float32 implementation smoke coverage" begin
+    Random.seed!(0xf032_2026)
+    setprecision(BigFloat, 512) do
+        u = BigFloat(2)^(-24)
+        for (T, limbs, constant) in FLOAT32_CASES
+            for _ in 1:500
+                x = wide_rand(T; emin=-40, emax=40)
+                y = wide_rand(T; emin=-40, emax=40)
+                c = wide_rand(T; emin=-40, emax=40)
+                z = fma_fast(x, y, c)
+
+                @test isfinite(z)
+                @test MultiFloats.isnormalized(z)
+                @test z === fma_fast(y, x, c)
+                @test check_operand_relative_bound(z, x, y, c, limbs, constant, u)
+            end
+
+            V = MultiFloatVec{4,Float32,limbs}
+            for _ in 1:100
+                xs = ntuple(_ -> wide_rand(T; emin=-30, emax=30), 4)
+                ys = ntuple(_ -> wide_rand(T; emin=-30, emax=30), 4)
+                cs = ntuple(_ -> wide_rand(T; emin=-30, emax=30), 4)
+                vz = fma_fast(V(xs), V(ys), V(cs))
+                for lane in 1:4
+                    @test vz[lane] === fma_fast(xs[lane], ys[lane], cs[lane])
                 end
             end
         end
