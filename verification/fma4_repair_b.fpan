@@ -1,0 +1,23 @@
+# Candidate B: cancellation-safe first TwoSum plus one full fixed N=4
+# MultiFloats-style renormalization pass.
+
+variable b
+variable a1
+variable a2
+variable a3
+
+two_sum      b a1
+two_sum      a1 a2
+two_sum      a2 a3
+two_sum      b a1
+two_sum      a1 a2
+fast_two_sum a2 a3
+
+# One _renorm_pass for N=4: (1,2), (3,4), then (2,3).
+two_sum b a1
+two_sum a2 a3
+two_sum a1 a2
+
+prove b strongly_dominates a1
+prove a1 strongly_dominates a2
+prove a2 strongly_dominates a3

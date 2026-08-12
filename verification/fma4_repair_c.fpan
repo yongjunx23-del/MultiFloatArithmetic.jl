@@ -1,0 +1,27 @@
+# Candidate C: cancellation-safe first TwoSum plus two fixed N=4
+# renormalization passes. This is the conservative bounded fallback.
+
+variable b
+variable a1
+variable a2
+variable a3
+
+two_sum      b a1
+two_sum      a1 a2
+two_sum      a2 a3
+two_sum      b a1
+two_sum      a1 a2
+fast_two_sum a2 a3
+
+# Pass 1.
+two_sum b a1
+two_sum a2 a3
+two_sum a1 a2
+# Pass 2.
+two_sum b a1
+two_sum a2 a3
+two_sum a1 a2
+
+prove b strongly_dominates a1
+prove a1 strongly_dominates a2
+prove a2 strongly_dominates a3
