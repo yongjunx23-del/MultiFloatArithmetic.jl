@@ -16,10 +16,12 @@ timeout_seconds=${FPAN_TIMEOUT_SECONDS:-600}
 # Its optional --check-fast-two-sum flag additionally asks whether each ordinary
 # two_sum could be replaced by fast_two_sum; that optimization search is not a
 # proof obligation here and makes the larger source-mirrored networks needlessly
-# expensive.
+# expensive. Counterexample reporting is enabled so a refuted structural claim
+# leaves a reviewable fixed-precision model in the uploaded log.
 set +e
 timeout --signal=TERM --kill-after=15s "${timeout_seconds}s" \
     python3 -u "$verifier_dir/verify_fpan.py" \
+    --show-counterexamples \
     "${specs[@]}" \
     >"$log_file" 2>&1
 status=$?
