@@ -1,0 +1,109 @@
+# x4 compositional proof stage 3: prove a2 strongly dominates a3.
+# This is the largest pre-compression obligation and is checked at the concrete
+# Float32/Float64 base precisions in CI.
+
+variable x0
+variable x1
+variable x2
+variable x3
+variable y0
+variable y1
+variable y2
+variable y3
+variable c0
+variable c1
+variable c2
+variable c3
+
+assume x0 strongly_dominates x1
+assume x1 strongly_dominates x2
+assume x2 strongly_dominates x3
+assume y0 strongly_dominates y1
+assume y1 strongly_dominates y2
+assume y2 strongly_dominates y3
+assume c0 strongly_dominates c1
+assume c1 strongly_dominates c2
+assume c2 strongly_dominates c3
+
+variable p00
+variable e00
+two_prod x0 y0 p00 e00
+
+variable p01
+variable e01
+two_prod x0 y1 p01 e01
+
+variable p10
+variable e10
+two_prod x1 y0 p10 e10
+
+variable p02
+variable e02
+two_prod x0 y2 p02 e02
+
+variable p11
+variable e11
+two_prod x1 y1 p11 e11
+
+variable p20
+variable e20
+two_prod x2 y0 p20 e20
+
+variable p03
+variable e03
+two_prod x0 y3 p03 e03
+
+variable p12
+variable e12
+two_prod x1 y2 p12 e12
+
+variable p21
+variable e21
+two_prod x2 y1 p21 e21
+
+variable p30
+variable e30
+two_prod x3 y0 p30 e30
+
+# diagonal3 = (p03 + p30) + (p12 + p21)
+two_sum p03 p30
+two_sum p12 p21
+two_sum p03 p12
+
+# b/r and a1/f1:f4.
+two_sum p00 c0
+two_sum p01 p10
+two_sum p01 e00
+two_sum p01 c1
+two_sum p01 c0
+
+# a2/g1:g9.
+two_sum p02 p20
+two_sum p02 p11
+two_sum e01 e10
+two_sum p02 e01
+two_sum p02 c2
+two_sum p02 p10
+two_sum p02 e00
+two_sum p02 c1
+two_sum p02 c0
+
+# t3 = ((e02 + e20) + (e11 + diagonal3)) + c3
+two_sum e02 e20
+two_sum e11 p03
+two_sum e02 e11
+two_sum e02 c3
+
+# t1 = ((g1 + g2) + (g3 + g4)) + ((g6 + g7) + (g8 + g9)) + g5
+# a3 = t3 + t1
+two_sum p20 p11
+two_sum e01 e10
+two_sum p20 e01
+two_sum p10 e00
+two_sum c1 c0
+two_sum p10 c1
+two_sum p20 p10
+two_sum p20 c2
+two_sum e02 p20
+
+prove p02 strongly_dominates e02
