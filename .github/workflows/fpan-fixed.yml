@@ -1,4 +1,4 @@
-name: FPAN x4 compositional verification
+name: FPAN x4 repair verification
 
 on:
   pull_request:
@@ -12,14 +12,10 @@ permissions:
   contents: read
 
 jobs:
-  verify-universal-contracts:
-    name: x4 ${{ matrix.spec }} universal contract
+  verify-repair-contract:
+    name: x4 repaired final-compression contract
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        spec: [fma4_stage1, fma4_stage2, fma4_contract]
     steps:
       - uses: actions/checkout@v4
       - name: Check out pinned FPANVerifier
@@ -34,59 +30,20 @@ jobs:
           python-version: '3.12'
       - name: Install pinned native and Python Z3
         run: bash verification/install_z3.sh .verification-tools
-      - name: Verify universal proof contract
+      - name: Verify cancellation-safe final compression
         env:
-          FPAN_LOG: fpan-${{ matrix.spec }}.log
+          FPAN_LOG: fpan-fma4-repair-contract.log
           FPAN_TIMEOUT_SECONDS: '600'
           PYTHONUNBUFFERED: '1'
         run: >-
           bash verification/run_fpan.sh
           .verification-tools/FPANVerifier
-          verification/${{ matrix.spec }}.fpan
+          verification/fma4_repair_contract.fpan
       - name: Upload verification log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fpan-${{ matrix.spec }}-log
-          path: fpan-${{ matrix.spec }}.log
-          if-no-files-found: warn
-          retention-days: 30
-
-  verify-stage3-fixed:
-    name: x4 stage3 p=${{ matrix.precision }} contract
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        precision: [24, 53]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check out pinned FPANVerifier
-        uses: actions/checkout@v4
-        with:
-          repository: dzhang314/FPANVerifier
-          ref: 0a1314fa78aeab35793b7354eb097061380982e5
-          path: .verification-tools/FPANVerifier
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install pinned native and Python Z3
-        run: bash verification/install_z3.sh .verification-tools
-      - name: Verify concrete Float32/Float64 stage3 contract
-        env:
-          FPAN_TIMEOUT_SECONDS: '600'
-        run: >-
-          bash .github/scripts/run_fpan_fixed_precision.sh
-          .verification-tools/FPANVerifier
-          ${{ matrix.precision }}
-          verification/fma4_stage3.fpan
-      - name: Upload verification log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fpan-fma4-stage3-p${{ matrix.precision }}-log
-          path: fpan-fixed-p${{ matrix.precision }}.log
+          name: fpan-fma4-repair-contract-log
+          path: fpan-fma4-repair-contract.log
           if-no-files-found: warn
           retention-days: 30

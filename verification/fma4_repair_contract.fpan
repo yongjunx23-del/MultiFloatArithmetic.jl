@@ -1,0 +1,26 @@
+# Candidate minimal x4 repair: replace only the first final-compression
+# FastTwoSum with TwoSum. No magnitude ordering is assumed for b/a1/a2/a3.
+# If this proves, the final renormalization network is structurally valid even
+# under destructive cancellation that reorders the pre-compression terms.
+
+variable b
+variable a1
+variable a2
+variable a3
+
+# w0, w1 = two_sum(b, a1)          # repaired operation
+# w1, w2 = two_sum(w1, a2)
+# w2, w3 = two_sum(w2, a3)
+# z0, rho = two_sum(w0, w1)
+# z1, sigma = two_sum(rho, w2)
+# z2, z3 = fast_two_sum(sigma, w3)
+two_sum      b a1
+two_sum      a1 a2
+two_sum      a2 a3
+two_sum      b a1
+two_sum      a1 a2
+fast_two_sum a2 a3
+
+prove b strongly_dominates a1
+prove a1 strongly_dominates a2
+prove a2 strongly_dominates a3
