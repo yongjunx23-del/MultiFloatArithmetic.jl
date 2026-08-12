@@ -5,11 +5,27 @@
     ref_div = ExperimentalArithmetic.reference_div
     ref_sqrt = ExperimentalArithmetic.reference_sqrt
 
+    function repack_test_rational(::Type{T}, q::Rational{BigInt}) where {T}
+        return setprecision(BigFloat, 2048) do
+            T(BigFloat(q))
+        end
+    end
+
     function moderate_value(::Type{T}; emin=-80, emax=80) where {T}
-        x = rand(T)
-        x = rand(Bool) ? x : -x
+        q = Rational{BigInt}(rand(T))
         e = rand(emin:emax)
-        return T(ldexp(big(x), e))
+        if e >= 0
+            q *= BigInt(1) << e
+        else
+            q /= BigInt(1) << (-e)
+        end
+        q = rand(Bool) ? q : -q
+        return repack_test_rational(T, q)
+    end
+
+    function positive_value(::Type{T}; emin=-80, emax=80) where {T}
+        q = abs(Rational{BigInt}(moderate_value(T; emin=emin, emax=emax)))
+        return repack_test_rational(T, q)
     end
 
     function hp_inv(::Type{T}, x; p=16384) where {T}
@@ -41,7 +57,7 @@
                 y = moderate_value(T)
                 iszero(x) && (x = T(1.25))
                 iszero(y) && (y = T(0.75))
-                positive = abs(moderate_value(T))
+                positive = positive_value(T)
                 iszero(positive) && (positive = T(2.0))
 
                 invx = ref_inv(x)
@@ -84,7 +100,7 @@
                 iszero(y) ? T(0.75) : y
             end, 2)
             ps = ntuple(_ -> begin
-                x = abs(moderate_value(T; emin=-40, emax=40))
+                x = positive_value(T; emin=-40, emax=40)
                 iszero(x) ? T(2.0) : x
             end, 2)
 
@@ -125,10 +141,10 @@
 
         x = T5(BigFloat("1.234567890123456789"))
         low = setprecision(BigFloat, 64) do
-            (ref_inv(x), ref_div(x, T5(0.75)), ref_sqrt(abs(x)))
+            (ref_inv(x), ref_div(x, T5(0.75)), ref_sqrt(x))
         end
         high = setprecision(BigFloat, 4096) do
-            (ref_inv(x), ref_div(x, T5(0.75)), ref_sqrt(abs(x)))
+            (ref_inv(x), ref_div(x, T5(0.75)), ref_sqrt(x))
         end
         @test low === high
     end
