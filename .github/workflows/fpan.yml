@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'verification/**'
+      - 'audit/**'
       - 'src/MultiFloatArithmetic.jl'
       - '.github/workflows/fpan.yml'
   push:
     branches: [main]
     paths:
       - 'verification/**'
+      - 'audit/**'
       - 'src/MultiFloatArithmetic.jl'
       - '.github/workflows/fpan.yml'
   workflow_dispatch:
@@ -21,11 +23,17 @@ jobs:
   verify-fpan:
     name: ${{ matrix.spec }} structural proof obligations
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        spec: [fma2, fma3]
+        include:
+          - spec: fma2
+            timeout_seconds: '600'
+          - spec: fma3
+            timeout_seconds: '600'
+          - spec: paper2607_qw_v4
+            timeout_seconds: '1500'
     steps:
       - uses: actions/checkout@v4
       - name: Check out pinned FPANVerifier
@@ -54,7 +62,7 @@ jobs:
       - name: Verify source-mirrored FPAN
         env:
           FPAN_LOG: fpan-${{ matrix.spec }}.log
-          FPAN_TIMEOUT_SECONDS: '600'
+          FPAN_TIMEOUT_SECONDS: ${{ matrix.timeout_seconds }}
           PYTHONUNBUFFERED: '1'
         run: >-
           bash verification/run_fpan.sh
@@ -66,5 +74,59 @@ jobs:
         with:
           name: fpan-${{ matrix.spec }}-log
           path: fpan-${{ matrix.spec }}.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  audit-former-qw-two-pass:
+    name: Former QW two-pass expected non-overlap refutation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out pinned FPANVerifier
+        uses: actions/checkout@v4
+        with:
+          repository: dzhang314/FPANVerifier
+          ref: 0a1314fa78aeab35793b7354eb097061380982e5
+          path: .verification-tools/FPANVerifier
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned Python Z3 and command adapter
+        run: |
+          python -m pip install --disable-pip-version-check z3-solver==4.13.4.0
+          mkdir -p .verification-tools/bin
+          cat > .verification-tools/bin/z3 <<'SH'
+          #!/usr/bin/env bash
+          exec python "$GITHUB_WORKSPACE/verification/z3_cli.py" "$@"
+          SH
+          chmod +x .verification-tools/bin/z3
+          echo "$GITHUB_WORKSPACE/.verification-tools/bin" >> "$GITHUB_PATH"
+      - name: Reproduce former two-pass proof pattern
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$GITHUB_WORKSPACE/.verification-tools/bin:$PATH"
+          timeout --signal=TERM --kill-after=15s 1500s \
+            python3 -u .verification-tools/FPANVerifier/verify_fpan.py \
+            --show-counterexamples \
+            verification/paper2607_qw_v1_2pass.fpan \
+            > fpan-paper2607-qw-v1-2pass.log 2>&1
+          cat fpan-paper2607-qw-v1-2pass.log
+
+          # The old model must not contain an invalid FastTwoSum gate. The
+          # expected failure is output non-overlap after only two cascades.
+          ! grep -q 'fast_two_sum command.*invalid' fpan-paper2607-qw-v1-2pass.log
+          test "$(grep -c '^ERROR:' fpan-paper2607-qw-v1-2pass.log)" -eq 2
+          grep -E '^ERROR: p00 strongly_dominates p01.*REFUTED' fpan-paper2607-qw-v1-2pass.log
+          grep -E '^ERROR: p01 strongly_dominates p02.*REFUTED' fpan-paper2607-qw-v1-2pass.log
+          grep -E '^p02 strongly_dominates e02.*proved by' fpan-paper2607-qw-v1-2pass.log
+      - name: Upload former-QW diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fpan-paper2607-qw-v1-2pass-log
+          path: fpan-paper2607-qw-v1-2pass.log
           if-no-files-found: warn
           retention-days: 30
