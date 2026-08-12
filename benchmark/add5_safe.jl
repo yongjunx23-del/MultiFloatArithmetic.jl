@@ -96,6 +96,16 @@ function report(label, stats::Stats)
     println("  max result-relative error = ", stats.max_result_relative)
 end
 
+function assert_acceptance_gate(stats::Stats)
+    @assert stats.mismatches == 0
+    @assert stats.normalization_failures == 0
+    @assert stats.commutativity_failures == 0
+    # Empirical regression gate only, not a proved theorem. The first accepted
+    # corpus measured about 0.05284, so C=1 leaves nearly 19x headroom while
+    # still catching an order-of-magnitude tail regression.
+    @assert stats.max_operand_constant <= 1
+end
+
 function run_diagnostics()
     Random.seed!(0xad05_2026)
 
@@ -122,12 +132,9 @@ function run_diagnostics()
     end
     report("near cancellation", cancellation)
 
-    @assert ordinary.normalization_failures == 0
-    @assert wide.normalization_failures == 0
-    @assert cancellation.normalization_failures == 0
-    @assert ordinary.commutativity_failures == 0
-    @assert wide.commutativity_failures == 0
-    @assert cancellation.commutativity_failures == 0
+    assert_acceptance_gate(ordinary)
+    assert_acceptance_gate(wide)
+    assert_acceptance_gate(cancellation)
 end
 
 function run_timing(; n=5_000)
