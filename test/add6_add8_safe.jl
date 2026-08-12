@@ -56,8 +56,17 @@
                 x = wide_rand(T; emin=-250, emax=250)
                 @test addN(x, zero(T)) === x
                 @test addN(zero(T), x) === x
-                @test iszero(addN(x, -x))
-                check_case(x, -x)
+
+                # Upstream unary minus negates limbs directly. For higher N a
+                # trailing +0 can become -0, making the strict `===`-based
+                # normalization predicate reject the otherwise equal-value
+                # tuple. Normalize the negated operand explicitly because the
+                # safe-add contract intentionally accepts normalized inputs only.
+                negx = MultiFloats.renormalize(-x)
+                @test MultiFloats.isnormalized(negx)
+                @test Rational{BigInt}(negx) == -Rational{BigInt}(x)
+                @test iszero(addN(x, negx))
+                check_case(x, negx)
             end
 
             for depth in (100, 53N - 60, 53N - 10, 53N + 30)
