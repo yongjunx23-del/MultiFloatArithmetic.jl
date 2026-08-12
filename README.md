@@ -11,21 +11,22 @@ come before instruction-count wins.
 
 ## Current stage
 
-M1.1 is complete and the project is now at **M2: exact x5-x8 reference
-arithmetic**.
+The project is at **M3: safe higher-limb addition baselines**.
 
 - x2 has a pinned structural proof;
 - x3 has a proof-driven fixed-cost normalization repair and pinned structural
   proof;
 - x4 uses a conservative TwoSum + `renormalize` baseline after a concrete
   FastTwoSum cancellation defect was found in the old network;
-- x5-x8 now have exact-rational Experimental add/sub/mul/FMA reference oracles;
-- optimized x5-x8 networks, formal error constants, and native linear algebra
-  are not implemented yet.
+- x5-x8 have exact-rational Experimental add/sub/mul/FMA reference oracles;
+- Float64x5 now has a no-FastTwoSum safe addition baseline matching the exact
+  five-limb oracle on the permanent corpus;
+- safe add6-add8, optimized multiplication/FMA, formal error constants, and
+  native linear algebra remain future work.
 
-See [STATUS.md](STATUS.md) for the acceptance state,
-[docs/REFERENCE_X5_X8.md](docs/REFERENCE_X5_X8.md) for the higher-limb oracle,
-and [benchmark/RESULTS.md](benchmark/RESULTS.md) for measurements.
+See [STATUS.md](STATUS.md), [docs/REFERENCE_X5_X8.md](docs/REFERENCE_X5_X8.md),
+[docs/ADD5_SAFE.md](docs/ADD5_SAFE.md), and
+[benchmark/RESULTS.md](benchmark/RESULTS.md).
 
 ## Installation
 
@@ -53,14 +54,11 @@ z = fma_fast(x, y, c)
 `MultiFloatVec` values. Binary32 has smoke coverage; binary64 is the primary
 optimization target.
 
-## x5-x8 correctness oracle
+## Higher-limb correctness oracle
 
 Higher-limb work begins under `Experimental`, not the accepted hot API:
 
 ```julia
-using MultiFloats
-using MultiFloatArithmetic
-
 const E = MultiFloatArithmetic.Experimental
 T = MultiFloat{Float64,8}
 
@@ -75,9 +73,30 @@ f = E.reference_fma(x, y, c)
 
 `reference_add`, `reference_sub`, `reference_mul`, and `reference_fma` support
 Float32/Float64 with 5-8 limbs. They use exact `Rational{BigInt}` arithmetic and
-then pack the exact result once. They are intentionally slow and exist only to
-validate future optimized kernels. CI cross-checks their packing against an
-independent 8192-bit BigFloat result.
+pack the exact result once. CI cross-checks packing against an independent
+8192-bit BigFloat result.
+
+## Safe Float64x5 addition baseline
+
+M3 starts with correctness, not a short network:
+
+```julia
+T5 = MultiFloat{Float64,5}
+x5 = T5(BigFloat("1.2345678901234567890123456789012345"))
+y5 = T5(BigFloat("-0.234567890123456789012345678901"))
+
+z5 = E.add5_safe(x5, y5)
+```
+
+`add5_safe` applies five general TwoSums, fully renormalizes the exact ten-term
+expansion, truncates to five limbs, and renormalizes the head. It introduces no
+FastTwoSum magnitude assumptions.
+
+The permanent corpus requires exact discarded-tail accounting, normalized
+output, bitwise commutativity, and bitwise equality with `reference_add`. The
+first diagnostic measured a worst observed operand-relative constant of about
+`0.05284` in units of `u^5(|x|+|y|)`; CI uses `C=1` only as a conservative
+empirical regression gate, not a theorem.
 
 ## Numerical contract
 
@@ -93,16 +112,12 @@ concrete cancellation defect was found in the old FastTwoSum-based compression.
 
 ## Experimental namespace
 
-Experimental APIs include rejected performance candidates and correctness-only
-oracles. They may change without deprecation during the 0.x series and must not
-be treated as production performance recommendations.
+Experimental APIs include rejected performance candidates, correctness oracles,
+and safe higher-limb baselines. They may change without deprecation during the
+0.x series and must not be treated as production performance recommendations.
 
-```julia
-z = MultiFloatArithmetic.Experimental.div_digits(Float64x4(1.25), Float64x4(0.75))
-```
-
-Quotient-digit division remains only for reproducibility; the x5-x8
-`reference_*` functions are deliberately slow test/research oracles.
+Quotient-digit division remains only for reproducibility; `reference_*` and
+`add5_safe` are correctness-first research tools.
 
 ## Reproducing the evidence
 
@@ -114,6 +129,7 @@ include("benchmark/smoke.jl")
 include("benchmark/simd_widths.jl")
 include("benchmark/fma3_repair.jl")
 include("benchmark/fma4_safe.jl")
+include("benchmark/add5_safe.jl")
 include("benchmark/division_digits.jl")
 include("benchmark/codegen.jl")
 ```
@@ -123,10 +139,9 @@ measurements on the deployment CPU and an end-to-end downstream solver A/B.
 
 ## Roadmap
 
-1. **M2:** freeze the exact x5-x8 reference oracle and permanent adversarial
-   corpus.
-2. **M3:** build safe x5 addition first, measure its discarded tail against the
-   oracle, then extend verified addition through x8.
+1. **M3:** freeze safe add5, then extend the same no-FastTwoSum baseline through
+   add6-add8 and establish empirical discarded-tail gates per width.
+2. Derive formal higher-limb addition bounds, then search fixed-cost networks.
 3. **M4:** build commutative multiplication x5 through x8.
 4. **M5:** build direct FMA/submul x5 through x8.
 5. **M6:** add reciprocal/division/square-root strategies via precision doubling.

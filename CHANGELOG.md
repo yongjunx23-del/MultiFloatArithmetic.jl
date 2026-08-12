@@ -22,3 +22,11 @@
   Float32/Float64, including lane-wise `MultiFloatVec` wrappers.
 - Cross-check the x5-x8 reference packing precision against independent 8192-bit
   BigFloat packing and add explicit domain/normalization/ambient-precision tests.
+- Start M3 with `Experimental.add5_safe`, a no-FastTwoSum Float64x5 addition
+  baseline built from five pairwise TwoSums, full ten-term renormalization, and
+  five-limb truncation.
+- Add exact discarded-tail accounting, bitwise `reference_add` agreement,
+  commutativity, deep-cancellation, power-of-two/carry-boundary, and unbalanced-
+  operand regression cases for safe x5 addition.
+- Add an empirical `C=1` operand-relative x5 addition regression gate; the first
+  diagnostic corpus measured a worst constant of approximately 0.05284.

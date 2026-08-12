@@ -42,9 +42,11 @@ end
     @test :fma_fast in public_names
     @test :fma_fast_limbs in public_names
     @test :Experimental in public_names
+    @test :add5_safe ∉ public_names
     @test :div_digits ∉ public_names
     @test :mul_scalar ∉ public_names
     @test :reference_add ∉ public_names
+    @test :add5_safe in experimental_names
     @test :div_digits in experimental_names
     @test :mul_scalar in experimental_names
     @test :reference_add in experimental_names
@@ -218,3 +220,4 @@ end
 include("mul_scalar.jl")
 include("division_digits.jl")
 include("reference_arithmetic.jl")
+include("add5_safe.jl")
