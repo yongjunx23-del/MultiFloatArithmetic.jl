@@ -52,7 +52,6 @@ function bench_gemm(::Type{M}, n) where {M<:MultiFloat}
             1e3tg, tg/tp)
 end
 
-# Exercise row and column remainders independently from the square timing cases.
 function check_remainders(::Type{M}) where {M<:MultiFloat}
     Random.seed!(0x8e_2026 + sizeof(M))
     A = rand(M, 19, 11)
@@ -98,6 +97,90 @@ function bench_dot(::Type{M}, n) where {M<:MultiFloat}
             n, 1e3tf, 1e3tg, tg/tf)
 end
 
+function make_spd_x4(n)
+    M = Float64x4
+    Random.seed!(0xc401 + n)
+    L = zeros(M, n, n)
+    @inbounds for j in 1:n
+        L[j,j] = M(1.5 + 0.005j)
+        for i in j+1:n
+            L[i,j] = M(0.025 * (2rand() - 1))
+        end
+    end
+
+    A = zeros(M, n, n)
+    @inbounds for j in 1:n
+        for i in j:n
+            s = zero(M)
+            for p in 1:j
+                s = fma_fast(L[i,p], L[j,p], s)
+            end
+            A[i,j] = s
+            A[j,i] = s
+        end
+    end
+    return A
+end
+
+_bitwise_same(A, B) = size(A) == size(B) && all(i -> A[i] === B[i], eachindex(A, B))
+
+function check_potrf_remainder()
+    A = make_spd_x4(73)
+    ref = copy(A)
+    blocked = copy(A)
+    public = copy(A)
+    MFLA._potrf_unblocked_kernel!(ref)
+    MFLA._potrf_blocked_vec8!(blocked, Val(8))
+    MFLA.potrf!(public; uplo=:L)
+    @assert _bitwise_same(blocked, ref)
+    @assert _bitwise_same(public, ref)
+    @assert all(MultiFloats.isnormalized, public)
+end
+
+function bench_potrf_x4(n)
+    A = make_spd_x4(n)
+    ref = copy(A)
+    MFLA._potrf_unblocked_kernel!(ref)
+    @assert all(MultiFloats.isnormalized, ref)
+
+    block_sizes = (8, 16, 24, 32)
+    for bs in block_sizes
+        X = copy(A)
+        MFLA._potrf_blocked_vec8!(X, Val(bs))
+        @assert _bitwise_same(X, ref)
+        @assert all(MultiFloats.isnormalized, X)
+    end
+    P = copy(A)
+    MFLA.potrf!(P; uplo=:L)
+    @assert _bitwise_same(P, ref)
+
+    scratch0 = similar(A)
+    base!() = begin
+        copyto!(scratch0, A)
+        MFLA._potrf_unblocked_kernel!(scratch0)
+    end
+    t0 = minimum_time(base!; samples=4)
+
+    scratchp = similar(A)
+    public!() = begin
+        copyto!(scratchp, A)
+        MFLA.potrf!(scratchp; uplo=:L)
+    end
+    tp = minimum_time(public!; samples=4)
+
+    @printf("  POTRF x4 n=%d: public=%8.3f ms (%5.2fx), unblocked=%8.3f ms", n, 1e3tp, t0/tp, 1e3t0)
+    for bs in block_sizes
+        scratch = similar(A)
+        run!() = begin
+            copyto!(scratch, A)
+            MFLA._potrf_blocked_vec8!(scratch, Val(bs))
+        end
+        tb = minimum_time(run!; samples=4)
+        @printf(", b%-2d=%8.3f ms (%5.2fx)", bs, 1e3tb, t0/tb)
+    end
+    println()
+end
+
 println("MultiFloat linear algebra direct-FMA benchmark; informational")
 println("CPU: ", Sys.CPU_NAME)
 println("MultiFloats: ", Base.pkgversion(MultiFloats))
@@ -109,4 +192,10 @@ for M in (Float64x2, Float64x4)
     for n in (16, 32, 48, 64)
         bench_gemm(M, n)
     end
+end
+
+println("Float64x4 Cholesky public-dispatch benchmark")
+check_potrf_remainder()
+for n in (32, 64, 96)
+    bench_potrf_x4(n)
 end
