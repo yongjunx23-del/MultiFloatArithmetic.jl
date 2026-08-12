@@ -71,8 +71,8 @@ jobs:
         run: julia --project=. benchmark/fma6_fma8_safe.jl
       - name: Compare BigFloat and MultiFloat precision/speed
         run: julia --project=. benchmark/bigfloat_multifloat_comparison.jl
-      - name: Compare Float64x8 reciprocal correction counts
-        run: julia --project=. benchmark/inv8_safe.jl
+      - name: Compare Float64x5 reciprocal seed/correction paths
+        run: julia --project=. benchmark/recip5_safe.jl
       - name: Run rejected quotient-digit division A/B
         run: julia --project=. benchmark/division_digits.jl
       - name: Inspect FMA codegen metrics
