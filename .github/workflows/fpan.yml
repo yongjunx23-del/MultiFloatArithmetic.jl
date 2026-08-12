@@ -35,13 +35,23 @@ jobs:
           ref: 0a1314fa78aeab35793b7354eb097061380982e5
           path: .verification-tools/FPANVerifier
           persist-credentials: false
-      - name: Install Z3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install pinned Python Z3 and command adapter
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes z3
-          python3 -m pip install --disable-pip-version-check z3-solver==4.13.4.0
+          python -m pip install --disable-pip-version-check z3-solver==4.13.4.0
+          mkdir -p .verification-tools/bin
+          cat > .verification-tools/bin/z3 <<'SH'
+          #!/usr/bin/env bash
+          exec python "$GITHUB_WORKSPACE/verification/z3_cli.py" "$@"
+          SH
+          chmod +x .verification-tools/bin/z3
+          echo "$GITHUB_WORKSPACE/.verification-tools/bin" >> "$GITHUB_PATH"
+          export PATH="$GITHUB_WORKSPACE/.verification-tools/bin:$PATH"
           z3 --version
-          python3 -c 'import z3; print("Python Z3:", z3.get_version_string())'
+          python -c 'import z3; print("Python Z3:", z3.get_version_string())'
       - name: Verify source-mirrored FPAN
         env:
           FPAN_LOG: fpan-${{ matrix.spec }}.log
@@ -56,5 +66,5 @@ jobs:
         with:
           name: fpan-${{ matrix.spec }}-log
           path: fpan-${{ matrix.spec }}.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30

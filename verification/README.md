@@ -7,9 +7,14 @@ This directory mirrors the arithmetic networks in
 ## Pinned verifier
 
 CI checks out FPANVerifier commit
-`0a1314fa78aeab35793b7354eb097061380982e5`. Pinning the commit prevents an
-upstream lemma or parser change from silently changing this repository's proof
-status.
+`0a1314fa78aeab35793b7354eb097061380982e5` and installs
+`z3-solver==4.13.4.0`. Pinning both prevents an upstream lemma, parser, or solver
+change from silently changing this repository's proof status.
+
+FPANVerifier expects both Python Z3 bindings and a `z3` executable. CI supplies
+the executable through `verification/z3_cli.py`, a minimal adapter that solves
+the generated SMT-LIB files with the same pinned Python Z3 package. This avoids
+runner-specific APT repositories and eliminates Python/executable version drift.
 
 The upstream verifier currently warns that its SELTZO lemma system is being
 redesigned and that precise error-bound/non-overlap proving strength may
@@ -39,6 +44,9 @@ The strict CI command checks:
 2. the final x2, x3, and x4 output limbs form the expected
    `strongly_dominates` chain.
 
+Each limb count runs as an independent matrix job with a three-minute solver
+limit, so a hard network cannot hide the status of the other two.
+
 These obligations establish structural validity of the accumulation network;
 they do **not** yet prove the empirical constants `C_2 = 34`, `C_3 = 184`, and
 `C_4 = 812` from `docs/NUMERICAL_CONTRACT.md`, nor do they prove behavior for
@@ -46,11 +54,11 @@ NaN, infinity, overflow, or underflow-adjacent inputs.
 
 ## Local reproduction
 
-Install a Python Z3 binding and a `z3` executable, check out the pinned verifier,
-then run:
+Install `z3-solver==4.13.4.0`, place a compatible `z3` executable on `PATH`,
+check out the pinned verifier, then run one or more specs:
 
 ```bash
-bash verification/run_fpan.sh /path/to/FPANVerifier
+bash verification/run_fpan.sh /path/to/FPANVerifier verification/fma2.fpan
 ```
 
 Any line beginning with `ERROR:` makes the wrapper fail, because FPANVerifier
