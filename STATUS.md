@@ -1,119 +1,99 @@
 # Project status
 
 Status date: **2026-08-12**
-Current milestone: **M3 — verified-safe higher-limb addition baselines**
+Current milestone: **M3 baseline complete — safe Float64x5-x8 addition**
 
 ## Executive assessment
 
-M1.1 and M2 are merged. The project now has:
+The project now has a correctness-first arithmetic ladder:
 
-- pinned structural verification for the fixed-cost x2/x3 FMA networks;
-- a cancellation-safe x4 FMA baseline after the original FastTwoSum defect was
-  reproduced on concrete Float64 inputs;
+- x2/x3 FMA fixed-cost networks with pinned structural verification;
+- x3 proof-driven final-normalization repair;
+- x4 cancellation-safe TwoSum + `renormalize` baseline;
 - exact-rational x5-x8 Experimental add/sub/mul/FMA oracles;
-- a correctness-first Float64x5 addition baseline whose returned value matches
-  the exact M2 five-limb oracle on the permanent corpus.
+- one common no-FastTwoSum safe addition construction accepted as the M3
+  Experimental baseline for Float64x5, x6, x7, and x8.
 
-Optimized x5-x8 arithmetic, formal error proofs, and native linear algebra are
-still future milestones.
+Optimized higher-limb arithmetic, formal discarded-tail proofs, and native linear
+algebra remain future work.
 
-## M3 Float64x5 safe addition
+## M3 safe addition family
 
-`Experimental.add5_safe` deliberately avoids FastTwoSum. It:
+`Experimental.add_safe` and wrappers `add5_safe` ... `add8_safe` use the same
+algorithm at every width N:
 
-1. applies `two_sum` to each of the five same-order limb pairs;
-2. fully renormalizes the resulting exact ten-term expansion;
-3. retains the leading five terms;
-4. renormalizes the five-term head.
+1. N same-index general TwoSums;
+2. full renormalization of the exact 2N-term expansion;
+3. retain the N-limb head;
+4. renormalize the head.
 
-The low five normalized terms remain available to diagnostics, so CI checks the
-exact dyadic identity
+CI requires exact head+tail accounting, normalized output, bitwise
+commutativity, and bitwise equality with the M2 `reference_add` oracle under
+ordinary, wide-exponent, exact-identity, deep-cancellation, power/carry-boundary,
+and unbalanced-operand corpora.
 
-```text
-value(result) + value(discarded_tail) = value(x) + value(y).
-```
+All x5-x8 safe-add unit gates are green on Linux Julia 1.10/current and macOS
+current.
 
-The permanent corpus includes signed random inputs, wide exponent separation,
-exact identities, deep cancellation, power-of-two/carry boundaries, and highly
-unbalanced operands. It requires normalized output, bitwise commutativity, and
-bitwise equality with `Experimental.reference_add`.
+### First width-specific tail measurements
 
-### First discarded-tail measurement
+| Width | Max observed `|err|/(u^N(|x|+|y|))` | First timing / 5000 |
+|---|---:|---:|
+| x5 | 0.0528336 | 0.454 ms |
+| x6 | 0.0254805 | 0.545 ms |
+| x7 | 0.0109878 | 0.710 ms |
+| x8 | 0.00541727 | 1.438 ms |
 
-On the initial 2,500-case diagnostic corpus:
-
-- oracle mismatches: **0**;
-- normalization failures: **0**;
-- commutativity failures: **0**;
-- ordinary cases with nonzero discarded tail: **583 / 1,000**;
-- wide-exponent cases with nonzero discarded tail: **968 / 1,000**;
-- near-cancellation cases with nonzero discarded tail: **0 / 500**;
-- maximum observed `|err| / (u^5 (|x| + |y|))`: **~0.05284**.
-
-CI uses `C = 1` only as a conservative empirical regression gate. It is not yet
-a theorem. See `docs/ADD5_SAFE.md`.
-
-The safe implementation measured roughly 0.5 ms for 5,000 scalar additions on
-the first Zen 3 hosted-runner snapshot. Performance is not yet an acceptance
-criterion for this baseline.
+Near-cancellation diagnostics had zero discarded tail at all four widths in the
+first accepted corpus. CI uses C=1 as a conservative **empirical regression
+gate**, not a theorem. See `docs/ADD_SAFE_X5_X8.md`.
 
 ## M2 exact oracle
 
-`MultiFloatArithmetic.Experimental` provides `reference_add`, `reference_sub`,
-`reference_mul`, and `reference_fma` for Float32/Float64 expansions with
-`N in 5:8`.
+`Experimental.reference_add`, `reference_sub`, `reference_mul`, and
+`reference_fma` support Float32/Float64 N=5:8. Scalar operations use exact
+`Rational{BigInt}` dyadics and pack once; CI independently cross-checks packing
+against 8192-bit BigFloat. Vector reference methods are deliberately lane-wise.
 
-Each scalar input is converted to exact `Rational{BigInt}` dyadics, the operation
-is performed exactly, and the result is packed once. CI cross-checks the packing
-against an independent 8192-bit BigFloat result. Vector reference methods are
-lane-wise scalar calls to avoid sharing implementation failure modes with future
-SIMD candidates.
+## x4 design constraint
 
-See `docs/REFERENCE_X5_X8.md`.
-
-## x4 finding retained as a design constraint
-
-The original x4 final compression began with `fast_two_sum(b, a1)`. FPAN
-decomposition refuted the required ordering under cancellation. In 10,000 seeded
-cases with `c` chosen as the x4 representation of `-x*y`:
-
-- first-FastTwoSum ordering violations: **3,755 / 10,000**;
-- old x4 non-normalized outputs: **5,258 / 10,000**;
-- safe-baseline non-normalized outputs: **0 / 10,000**.
-
-Higher-limb candidates may not inherit FastTwoSum assumptions without proving
-the source-specific magnitude ordering.
+The rejected old x4 `fast_two_sum(b,a1)` assumption failed under cancellation.
+In 10,000 seeded exact-cancellation-style cases, 3,755 violated its ordering and
+5,258 old outputs were non-normalized; the safe x4 baseline produced none.
+Higher-limb work therefore cannot inherit FastTwoSum assumptions without proof.
 
 ## Current decisions
 
 | Component | Decision |
 |---|---|
-| x2 scalar `fma_fast` | marginal architecture-dependent opt-in candidate |
-| x3 scalar `fma_fast` | structurally verified but slower; do not auto-select |
-| x2/x3 SIMD `fma_fast` | continue architecture-specific optimization path |
-| x4 scalar `fma_fast` | correctness baseline only; upstream is faster |
-| x4 SIMD `fma_fast` | safe baseline retains useful speedup |
+| x2 scalar FMA | marginal architecture-dependent candidate |
+| x3 scalar FMA | structurally verified but slower; no auto-selection |
+| x2/x3 SIMD FMA | continue architecture-specific path |
+| x4 scalar FMA | correctness baseline only |
+| x4 SIMD FMA | safe baseline retains useful speedup |
 | x5-x8 `reference_*` | exact Experimental correctness oracle |
-| `add5_safe` | accepted M3 Experimental correctness baseline; not a fast kernel |
-| add6-add8 safe baselines | next M3 step |
-| optimized x5-x8 multiplication/FMA | not started |
-| quotient-digit division | rejected as default; retain under `Experimental` |
-| native linear algebra backend | not implemented |
+| x5-x8 `add_safe` | accepted M3 Experimental correctness baseline |
+| fixed-cost add5-add8 | not started; formal tail analysis first |
+| safe multiplication x5 | next implementation milestone |
+| quotient-digit division | rejected as default; Experimental only |
+| native linear algebra | not implemented |
 
 ## Acceptance gates for higher-limb kernels
 
-1. domain, rounding, underflow, normalization, and error metric are explicit;
+1. explicit domain/rounding/normalization/error contract;
 2. permanent adversarial cases agree with the exact M2 oracle;
-3. normalized output and required symmetries pass;
-4. every FastTwoSum precondition is proved or FastTwoSum is avoided;
-5. discarded-tail/error constants are measured and then formally bounded;
-6. SIMD lane semantics pass where applicable;
-7. only then inspect codegen and performance;
-8. downstream solver A/B must not degrade residuals or certificates.
+3. exact discarded-tail accounting where available;
+4. normalized outputs and required symmetries;
+5. every FastTwoSum precondition proved or FastTwoSum avoided;
+6. empirical constants measured, then replaced or backed by formal bounds;
+7. SIMD lane semantics where applicable;
+8. codegen/performance only after correctness;
+9. downstream solver A/B must preserve residuals and certificates.
 
 ## Immediate next milestone
 
-Freeze the safe x5 baseline, then generalize the same no-FastTwoSum construction
-to x6, x7, and x8. Each width must independently match `reference_add`, preserve
-normalization/commutativity under the adversarial corpus, and establish an
-empirical discarded-tail gate before any fixed-cost minimization begins.
+M3's safe family is ready to freeze. In parallel with deriving a formal
+higher-limb addition tail bound, start **M4 with a correctness-first Float64x5
+multiplication baseline**: over-complete product expansion, general error-free
+transforms/renormalization, exact discarded-tail accounting, and differential
+comparison against `reference_mul` before any FastTwoSum or performance search.
