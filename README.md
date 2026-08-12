@@ -11,23 +11,20 @@ come before instruction-count wins.
 
 ## Current stage
 
-M3 safe addition is frozen for Float64x5-x8 and M4 now has its first safe
-multiplication baseline for **Float64x5**.
+M3/M4 correctness baselines now cover **Float64x5 through Float64x8** for
+addition and multiplication.
 
-- x2 has a pinned structural FMA proof;
-- x3 has a proof-driven fixed-cost normalization repair and structural proof;
-- x4 uses a conservative TwoSum + `renormalize` baseline after a concrete
-  FastTwoSum cancellation defect was found;
+- x2/x3 have fixed-cost FMA structural verification;
+- x4 uses a cancellation-safe FMA fallback after a concrete FastTwoSum defect;
 - x5-x8 have exact-rational Experimental add/sub/mul/FMA oracles;
-- x5-x8 share one no-FastTwoSum safe addition implementation;
-- Float64x5 has an over-complete, exact-tail-accounted, commutative safe
-  multiplication baseline;
-- formal higher-limb bounds, optimized multiplication/FMA, and native linear
-  algebra remain future work.
+- `add_safe` provides one no-FastTwoSum x5-x8 addition family;
+- `mul_safe` provides one no-FastTwoSum x5-x8 multiplication family;
+- direct x5-x8 FMA, formal high-limb tail bounds, and native linear algebra are
+  the next major stages.
 
 See [STATUS.md](STATUS.md), [docs/REFERENCE_X5_X8.md](docs/REFERENCE_X5_X8.md),
 [docs/ADD_SAFE_X5_X8.md](docs/ADD_SAFE_X5_X8.md), and
-[docs/MUL5_SAFE.md](docs/MUL5_SAFE.md).
+[docs/MUL_SAFE_X5_X8.md](docs/MUL_SAFE_X5_X8.md).
 
 ## Installation
 
@@ -67,54 +64,47 @@ oracle_product = E.reference_mul(x8, y8)
 `reference_add/sub/mul/fma` support Float32/Float64 N=5:8 and deliberately use
 exact `Rational{BigInt}` arithmetic before one final pack.
 
-## Safe Float64x5-x8 addition baseline
+## Safe Float64x5-x8 addition
 
 ```julia
 safe_sum = E.add_safe(x8, y8)
-# or width-specific wrappers E.add5_safe ... E.add8_safe
 ```
 
 For width N, `add_safe` uses N general TwoSums, fully renormalizes the exact 2N
 terms, keeps the N-limb head, and renormalizes it. No FastTwoSum assumption is
-introduced.
+introduced. First observed operand-relative constants were approximately
+0.05283, 0.02548, 0.01099, and 0.00542 for x5-x8.
 
-The permanent corpora require exact head+discarded-tail accounting, normalized
-output, bitwise commutativity, and bitwise equality with `reference_add`.
-First observed operand-relative constants were approximately 0.05283 (x5),
-0.02548 (x6), 0.01099 (x7), and 0.00542 (x8) in units of
-`u^N(|x|+|y|)`. CI uses C=1 only as an empirical regression gate.
-
-## Safe Float64x5 multiplication baseline
+## Safe Float64x5-x8 multiplication
 
 ```julia
-T5 = MultiFloat{Float64,5}
-x5 = T5(BigFloat("1.2345678901234567890123456789012345"))
-y5 = T5(BigFloat("0.8765432109876543210987654321098765"))
-product5 = E.mul5_safe(x5, y5)
+safe_product = E.mul_safe(x8, y8)
+# or E.mul5_safe ... E.mul8_safe
 ```
 
-`mul5_safe` evaluates all 25 limb pairs with `two_prod`, keeps both product and
-residual, canonicalizes the resulting 50 finite terms so operand swap is
-bitwise deterministic, fully renormalizes, truncates to five limbs, and
-renormalizes the head. It does not use FastTwoSum.
+For width N, `mul_safe` evaluates every N×N limb pair with `two_prod`, preserves
+all product/residual components (`2N^2` terms), canonicalizes their order under
+operand swap, fully renormalizes, keeps the N-limb head, and renormalizes it.
+No FastTwoSum is used.
 
-The permanent corpus checks every individual TwoProd exactly, then requires
-exact five-limb-head + discarded-tail reconstruction of `x*y`, normalized
-output, bitwise commutativity, and bitwise equality with `reference_mul`.
-The first diagnostic measured a worst observed `|err|/(u^5|x*y|)` of about
-**0.04841**, with zero oracle/normalization/commutativity failures. CI uses C=1
-as an empirical gate, not a theorem.
+The permanent corpus checks every TwoProd exactly, exact head+discarded-tail
+reconstruction of `x*y`, normalized output, bitwise commutativity, and bitwise
+`reference_mul` equality. First maximum observed `|err|/(u^N|x*y|)` values were:
 
-The first Zen 3 scalar timing was about **33.6 ms for 500 products**. This is
-intentionally a correctness baseline, not a performance kernel. Its current
-contract also excludes pair-product underflow/subnormal TwoProd components until
-a dedicated underflow proof is available.
+- x5: 0.0484069
+- x6: 0.0183703
+- x7: 0.00725543
+- x8: 0.00253803
+
+CI uses C=1 per width as an empirical regression gate, not a theorem. The safe
+multiplication family is deliberately slow and currently excludes subnormal or
+underflowing TwoProd components pending a dedicated proof.
 
 ## Experimental namespace
 
 Experimental APIs include rejected performance candidates, exact correctness
-oracles, and safe higher-limb baselines. They may change without deprecation
-during the 0.x series and are not production performance recommendations.
+oracles, and safe higher-limb baselines. They may change without deprecation and
+are not production performance recommendations.
 
 ## Reproducing evidence
 
@@ -129,21 +119,19 @@ include("benchmark/fma4_safe.jl")
 include("benchmark/add5_safe.jl")
 include("benchmark/add6_add8_safe.jl")
 include("benchmark/mul5_safe.jl")
+include("benchmark/mul6_mul8_safe.jl")
 include("benchmark/division_digits.jl")
 include("benchmark/codegen.jl")
 ```
 
 ## Roadmap
 
-1. Derive formal discarded-tail bounds for the safe addition family before
-   fixed-cost addition minimization.
-2. **M4:** generalize the safe multiplication baseline from x5 through x8,
-   measure each width independently, then derive a formal multiplication bound
-   before fixed-cost search.
-3. **M5:** direct FMA/submul x5 through x8.
-4. **M6:** reciprocal/division/sqrt via precision doubling.
-5. **M7:** MultiFloatVec-native DOT/SYRK/TRSM/GEMM.
-6. Integrate only accepted arithmetic into downstream solvers.
+1. Derive formal discarded-tail bounds for safe x5-x8 add/mul before fixed-cost
+   minimization.
+2. **M5:** build direct correctness-first FMA/submul x5 through x8, then optimize
+   accepted survivors.
+3. **M6:** reciprocal/division/sqrt via precision doubling.
+4. **M7:** MultiFloatVec-native DOT/SYRK/TRSM/GEMM and downstream solver A/B.
 
 Research software; passing CI is reproducible evidence, not a production/formal
 guarantee.
