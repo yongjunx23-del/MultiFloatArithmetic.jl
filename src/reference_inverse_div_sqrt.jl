@@ -6,6 +6,8 @@
 # the final N-limb MultiFloat packing is stable at two consecutive precisions.
 # CI independently repeats the pack at substantially larger precision.
 
+export reference_inv, reference_div, reference_sqrt
+
 @inline function _reference_start_precision(::Type{T}, ::Val{N}) where {T,N}
     _check_reference_format(T, Val{N}())
     return max(1024, 4 * N * precision(T) + 256)
