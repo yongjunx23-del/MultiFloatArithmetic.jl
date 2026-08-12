@@ -1,16 +1,9 @@
-name: FPAN verification
+name: FPAN repair A/B
 
 on:
   pull_request:
     paths:
       - 'verification/**'
-      - 'src/MultiFloatArithmetic.jl'
-      - '.github/workflows/fpan.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'verification/**'
-      - 'src/MultiFloatArithmetic.jl'
       - '.github/workflows/fpan.yml'
   workflow_dispatch:
 
@@ -18,14 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  verify-fpan:
-    name: ${{ matrix.spec }} structural proof obligations
+  verify-fpan-repair:
+    name: ${{ matrix.spec }} proof obligations
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        spec: [fma2, fma3, fma4]
+        spec: [fma3_repair_a, fma3_repair_b, fma3_repair_c]
     steps:
       - uses: actions/checkout@v4
       - name: Check out pinned FPANVerifier
@@ -51,7 +44,7 @@ jobs:
           export PATH="$GITHUB_WORKSPACE/.verification-tools/bin:$PATH"
           z3 --version
           python -c 'import z3; print("Python Z3:", z3.get_version_string())'
-      - name: Verify source-mirrored FPAN
+      - name: Verify repair candidate
         env:
           FPAN_LOG: fpan-${{ matrix.spec }}.log
           FPAN_TIMEOUT_SECONDS: '600'
