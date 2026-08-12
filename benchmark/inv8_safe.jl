@@ -49,19 +49,30 @@ function main()
 
     mismatch_one = 0
     mismatch_two = 0
+    mismatch_three = 0
+    fixed_two_three = 0
+    wrong_fixed_two_three = 0
     min_seed_bits = Inf
     min_one_bits = Inf
     min_two_bits = Inf
+    min_three_bits = Inf
     for x in xs
         oracle = E.reference_inv(x)
         seed = E._inv8_seed_x4(x)
         one_step = E._inv8_direct_one_correction(x)
         two_step = E._inv8_direct_two_corrections(x)
+        three_step = E._inv8_direct_three_corrections(x)
         mismatch_one += one_step !== oracle
         mismatch_two += two_step !== oracle
+        mismatch_three += three_step !== oracle
+        if two_step === three_step
+            fixed_two_three += 1
+            wrong_fixed_two_three += two_step !== oracle
+        end
         min_seed_bits = min(min_seed_bits, residual_bits_inv8(x, seed))
         min_one_bits = min(min_one_bits, residual_bits_inv8(x, one_step))
         min_two_bits = min(min_two_bits, residual_bits_inv8(x, two_step))
+        min_three_bits = min(min_three_bits, residual_bits_inv8(x, three_step))
     end
 
     out = Vector{T8I}(undef, length(xs))
@@ -77,16 +88,16 @@ function main()
         end
         out
     end
-    work_public!() = begin
+    work_three!() = begin
         @inbounds for i in eachindex(xs)
-            out[i] = E.inv8_safe(xs[i])
+            out[i] = E._inv8_direct_three_corrections(xs[i])
         end
         out
     end
 
     t_one = best_ms_inv8(work_one!)
     t_two = best_ms_inv8(work_two!)
-    t_public = best_ms_inv8(work_public!)
+    t_three = best_ms_inv8(work_three!)
 
     println("M6 Float64x8 direct-FMA reciprocal correction-count A/B")
     println("CPU: ", Sys.CPU_NAME)
@@ -99,14 +110,21 @@ function main()
     println("  oracle_mismatches=$(mismatch_two)")
     @printf("  worst exact residual bits ~= %.1f\n", min_two_bits)
     @printf("  time = %.3f ms / %d\n", t_two, length(xs))
-    @printf("x4 seed before x8 correction worst residual bits ~= %.1f\n", min_seed_bits)
-    @printf("two-correction / one-correction time ratio = %.3fx\n", t_two / t_one)
-    @printf("public inv8_safe time = %.3f ms / %d\n", t_public, length(xs))
+    println("x4 seed + 3 direct x8 corrections:")
+    println("  oracle_mismatches=$(mismatch_three)")
+    @printf("  worst exact residual bits ~= %.1f\n", min_three_bits)
+    @printf("  time = %.3f ms / %d\n", t_three, length(xs))
+    println("two_step === three_step: $(fixed_two_three)/$(length(xs))")
+    println("wrong fixed points among those: $(wrong_fixed_two_three)")
+    @printf("x4 seed before correction worst residual bits ~= %.1f\n", min_seed_bits)
+    @printf("two/one time ratio = %.3fx\n", t_two / t_one)
+    @printf("three/two time ratio = %.3fx\n", t_three / t_two)
 
-    # Oracle equality is the only hard numerical gate. Residual-bit figures are
-    # diagnostic: the correctly rounded x8 value can sit at a residual floor
-    # different from an arbitrary bit-count expectation.
-    @assert mismatch_two == 0
+    # Hard gate for this diagnostic: a third correction is acceptable only if it
+    # actually reaches the independent adaptive oracle. If this fails while
+    # wrong_fixed_two_three > 0, same-width Newton has reached a wrong fixed point
+    # and needs a final rounding-selection method rather than more corrections.
+    @assert mismatch_three == 0
 end
 
 main()
