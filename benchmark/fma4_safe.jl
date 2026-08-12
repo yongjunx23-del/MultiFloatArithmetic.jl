@@ -2,7 +2,7 @@ using MultiFloatArithmetic
 using MultiFloats
 using Random
 
-import MultiFloats: MultiFloat, MultiFloatVec, fast_two_sum, two_prod, two_sum
+import MultiFloats: MultiFloat, MultiFloatVec, fast_two_sum, two_prod, two_sum, renormalize
 
 # Executable copy of the pre-repair x4 end network. It is retained only to
 # measure the cost and numerical effect of the cancellation-safe baseline.
@@ -79,6 +79,87 @@ end
     fma4_old_limbs(x._limbs, y._limbs, c._limbs),
 )
 
+# Scalar-only guarded candidate. Unlike the historical old tail, every
+# FastTwoSum is used only when its magnitude precondition is explicitly true.
+# If the resulting four-term expansion is not already stable under one exact
+# renormalization pass, it falls back to the authoritative upstream
+# `renormalize`. This is a benchmark candidate only; production remains the
+# unconditional safe TwoSum path until this has broad differential evidence.
+@inline function _renorm_pass4_guarded(x::NTuple{4,T}) where {T}
+    x1, x2, x3, x4 = x
+    x1, x2 = two_sum(x1, x2)
+    x3, x4 = two_sum(x3, x4)
+    x2, x3 = two_sum(x2, x3)
+    return (x1, x2, x3, x4)
+end
+
+@inline function fma4_guarded_limbs(
+    x::NTuple{4,T},
+    y::NTuple{4,T},
+    c::NTuple{4,T},
+) where {T}
+    x0, x1, x2, x3 = x
+    y0, y1, y2, y3 = y
+    c0, c1, c2, c3 = c
+
+    p00, e00 = two_prod(x0, y0)
+    p01, e01 = two_prod(x0, y1)
+    p10, e10 = two_prod(x1, y0)
+    p02, e02 = two_prod(x0, y2)
+    p11, e11 = two_prod(x1, y1)
+    p20, e20 = two_prod(x2, y0)
+
+    p03 = x0 * y3
+    p12 = x1 * y2
+    p21 = x2 * y1
+    p30 = x3 * y0
+    diagonal3 = (p03 + p30) + (p12 + p21)
+
+    b, r = two_sum(p00, c0)
+
+    a1, f1 = two_sum(p01, p10)
+    a1, f2 = two_sum(a1, e00)
+    a1, f3 = two_sum(a1, c1)
+    a1, f4 = two_sum(a1, r)
+
+    a2, g1 = two_sum(p02, p20)
+    a2, g2 = two_sum(a2, p11)
+    e01e10, g4 = two_sum(e01, e10)
+    a2, g3 = two_sum(a2, e01e10)
+    a2, g5 = two_sum(a2, c2)
+    a2, g6 = two_sum(a2, f1)
+    a2, g7 = two_sum(a2, f2)
+    a2, g8 = two_sum(a2, f3)
+    a2, g9 = two_sum(a2, f4)
+
+    t1 = e02 + e20
+    t2 = e11 + diagonal3
+    t3 = (t1 + t2) + c3
+
+    t1 = g1 + g2
+    t2 = g3 + g4
+    t1 = t1 + t2
+    t2 = g6 + g7
+    t4 = g8 + g9
+    t2 = t2 + t4
+    t1 = t1 + t2
+    t1 = t1 + g5
+    a3 = t3 + t1
+
+    w0, w1 = abs(b) >= abs(a1) ? fast_two_sum(b, a1) : two_sum(b, a1)
+    w1, w2 = two_sum(w1, a2)
+    w2, w3 = two_sum(w2, a3)
+    z0, rho = two_sum(w0, w1)
+    z1, sigma = two_sum(rho, w2)
+    z2, z3 = abs(sigma) >= abs(w3) ? fast_two_sum(sigma, w3) : two_sum(sigma, w3)
+    z = (z0, z1, z2, z3)
+    p = _renorm_pass4_guarded(z)
+    return p === z ? z : renormalize(p)
+end
+
+@inline fma4_guarded(x::Float64x4, y::Float64x4, c::Float64x4) =
+    Float64x4(fma4_guarded_limbs(x._limbs, y._limbs, c._limbs))
+
 # Inspect the exact precondition used by the first FastTwoSum in the old x4
 # network. This is diagnostic only and is evaluated on concrete Float64 inputs.
 @inline function old_first_fast_precondition(x::Float64x4, y::Float64x4, c::Float64x4)
@@ -115,6 +196,7 @@ function benchmark_scalar(; n=20_000)
     cs = rand(T, n)
     old = similar(xs)
     safe = similar(xs)
+    guarded = similar(xs)
     upstream = similar(xs)
 
     old!() = begin
@@ -129,6 +211,12 @@ function benchmark_scalar(; n=20_000)
         end
         safe
     end
+    guarded!() = begin
+        @inbounds for i in eachindex(xs)
+            guarded[i] = fma4_guarded(xs[i], ys[i], cs[i])
+        end
+        guarded
+    end
     upstream!() = begin
         @inbounds for i in eachindex(xs)
             upstream[i] = xs[i] * ys[i] + cs[i]
@@ -136,19 +224,22 @@ function benchmark_scalar(; n=20_000)
         upstream
     end
 
-    old!(); safe!(); upstream!()
+    old!(); safe!(); guarded!(); upstream!()
     @assert all(MultiFloats.isnormalized, safe)
+    @assert guarded == safe
 
     to = minimum_time(old!)
     ts = minimum_time(safe!)
+    tg = minimum_time(guarded!)
     tu = minimum_time(upstream!)
     changed = count(i -> old[i] !== safe[i], eachindex(old))
 
     println("Float64x4 scalar: old=$(round(to*1e3; digits=3)) ms, ",
-            "safe=$(round(ts*1e3; digits=3)) ms, ",
+            "safe=$(round(ts*1e3; digits=3)) ms, guarded=$(round(tg*1e3; digits=3)) ms, ",
             "upstream=$(round(tu*1e3; digits=3)) ms, ",
             "safe/old=$(round(ts/to; digits=3))x, ",
-            "upstream/safe=$(round(tu/ts; digits=3))x, changed=$(changed)/$(n)")
+            "safe/guarded=$(round(ts/tg; digits=3))x, ",
+            "upstream/guarded=$(round(tu/tg; digits=3))x, changed=$(changed)/$(n)")
 end
 
 function pack_vectors(::Val{W}, scalars) where {W}
@@ -205,6 +296,8 @@ function cancellation_diagnostic(; n=10_000)
     changed = 0
     old_bad = 0
     safe_bad = 0
+    guarded_bad = 0
+    guarded_changed = 0
 
     setprecision(BigFloat, 1024) do
         for _ in 1:n
@@ -215,16 +308,41 @@ function cancellation_diagnostic(; n=10_000)
 
             old = fma4_old(x, y, c)
             safe = fma_fast(x, y, c)
+            guarded = fma4_guarded(x, y, c)
             changed += old !== safe
             old_bad += !MultiFloats.isnormalized(old)
             safe_bad += !MultiFloats.isnormalized(safe)
+            guarded_bad += !MultiFloats.isnormalized(guarded)
+            guarded_changed += guarded !== safe
         end
     end
 
     @assert safe_bad == 0
+    @assert guarded_bad == 0
+    @assert guarded_changed == 0
     println("cancellation diagnostic: first-FastTwoSum violations=$(violations)/$(n), ",
             "old_vs_safe_changed=$(changed)/$(n), old_non_normalized=$(old_bad), ",
-            "safe_non_normalized=$(safe_bad)")
+            "safe_non_normalized=$(safe_bad), guarded_non_normalized=$(guarded_bad), ",
+            "guarded_vs_safe_changed=$(guarded_changed)")
+end
+
+function wide_guarded_differential(; n=20_000)
+    Random.seed!(0xf4ad_2026)
+    T = Float64x4
+    changed = 0
+    setprecision(BigFloat, 1024) do
+        for _ in 1:n
+            ex, ey, ec = rand(-300:300), rand(-300:300), rand(-300:300)
+            x = T(ldexp(BigFloat(rand()), ex))
+            y = T(ldexp(BigFloat(rand()), ey))
+            c = T(ldexp(BigFloat(rand()), ec))
+            safe = fma_fast(x, y, c)
+            guarded = fma4_guarded(x, y, c)
+            changed += guarded !== safe
+        end
+    end
+    @assert changed == 0
+    println("wide-exponent guarded_vs_safe_changed=$(changed)/$(n)")
 end
 
 println("Cancellation-safe Float64x4 baseline benchmark; informational")
@@ -234,3 +352,4 @@ for W in (2, 4, 8)
     benchmark_vector(Val(W))
 end
 cancellation_diagnostic()
+wide_guarded_differential()
