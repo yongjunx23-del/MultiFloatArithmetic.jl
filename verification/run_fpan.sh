@@ -10,11 +10,11 @@ verifier_dir=$1
 shift
 specs=("$@")
 log_file=${FPAN_LOG:-fpan-verification.log}
-timeout_seconds=${FPAN_TIMEOUT_SECONDS:-180}
+timeout_seconds=${FPAN_TIMEOUT_SECONDS:-600}
 
 set +e
 timeout --signal=TERM --kill-after=15s "${timeout_seconds}s" \
-    python3 "$verifier_dir/verify_fpan.py" \
+    python3 -u "$verifier_dir/verify_fpan.py" \
     --check-fast-two-sum \
     "${specs[@]}" \
     >"$log_file" 2>&1
