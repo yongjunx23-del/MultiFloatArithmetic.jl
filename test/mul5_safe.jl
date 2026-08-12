@@ -34,6 +34,17 @@
     end
 
     function check_mul5_case(x::T, y::T)
+        # The safe baseline assumes each TwoProd is an exact decomposition. Check
+        # that primitive contract pair-by-pair so a rare component failure cannot
+        # be hidden by cancellation elsewhere in the 50-term expansion.
+        for i in 1:5, j in 1:5
+            xi = x._limbs[i]
+            yj = y._limbs[j]
+            p, e = MultiFloats.two_prod(xi, yj)
+            @test Rational{BigInt}(p) + Rational{BigInt}(e) ==
+                  Rational{BigInt}(xi) * Rational{BigInt}(yj)
+        end
+
         z = mul5(x, y)
         terms = ExperimentalArithmetic._mul5_terms(x._limbs, y._limbs)
         reverse_terms = ExperimentalArithmetic._mul5_terms(y._limbs, x._limbs)
