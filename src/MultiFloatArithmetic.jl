@@ -194,6 +194,28 @@ reproduced from the current arXiv:2607.11391 reference implementation.
 See `docs/NUMERICAL_CONTRACT.md` before using this operation in residual,
 refinement, stopping-criterion, or certificate code.
 """
+
+# Keep explicit x4 entry points in addition to the generic width dispatch. The
+# QW network is large enough that Julia 1.10 may otherwise fail to inline the
+# generic `where N` wrapper into scalar array loops, inhibiting the same loop
+# optimization obtained by the source-identical width-specialized audit kernel.
+# This does not change arithmetic or the limb-level network.
+@inline function fma_fast(
+    x::MultiFloat{T,4},
+    y::MultiFloat{T,4},
+    c::MultiFloat{T,4},
+) where {T}
+    return MultiFloat{T,4}(fma_fast_limbs(x._limbs, y._limbs, c._limbs))
+end
+
+@inline function fma_fast(
+    x::MultiFloatVec{W,T,4},
+    y::MultiFloatVec{W,T,4},
+    c::MultiFloatVec{W,T,4},
+) where {W,T}
+    return MultiFloatVec{W,T,4}(fma_fast_limbs(x._limbs, y._limbs, c._limbs))
+end
+
 @inline function fma_fast(
     x::MultiFloat{T,N},
     y::MultiFloat{T,N},
