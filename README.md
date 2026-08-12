@@ -5,40 +5,37 @@
 Verification-oriented arithmetic research kernels for
 [`MultiFloats.jl`](https://github.com/dzhang314/MultiFloats.jl).
 
-The package is focused on fixed-length, branch-free arithmetic that can later
-support a MultiFloat-native linear algebra backend and downstream solvers such
-as SDPX.jl. It is deliberately conservative: a kernel is not promoted merely
-because randomized tests pass or its instruction count is smaller.
+The package explores fixed-length arithmetic for a future MultiFloat-native
+linear algebra backend and downstream solvers such as SDPX.jl. Correctness gates
+come before instruction-count wins.
 
 ## Current stage
 
-The project is at **M1: empirical validation and API freeze for x2/x3/x4 fused
-multiply-add**. The x5-x8 reference path, formal verification, higher-limb
-multiplication/division, and native linear algebra backend have not yet been
-implemented.
+The project is at **M1.1: structural verification and cancellation hardening for
+x2/x3/x4 FMA**.
 
-Two hosted-runner studies on different CPU targets produced these decisions:
-
-- keep the x2 scalar FMA as a marginal, architecture-dependent candidate;
-- keep x3/x4 scalar FMA opt-in because they regressed on both runners;
-- continue SIMD FMA as the main optimization path, but do not auto-select it:
-  the tested vector cases were mostly faster, with one slight x2 Vec8 regression;
-- retain quotient-digit division only under `Experimental`: its scalar path was
-  consistently much slower, while Vec4 results were architecture-dependent.
+- x2 has a pinned structural proof;
+- x3 has a proof-driven fixed-cost normalization repair and pinned structural
+  proof;
+- the original x4 fixed-cost end network had an invalid FastTwoSum assumption
+  under cancellation;
+- x4 currently uses a conservative TwoSum + `renormalize` baseline while a
+  source-specific fixed-cost replacement remains research;
+- x5-x8, formal error constants, and native linear algebra are not implemented.
 
 See [STATUS.md](STATUS.md) for the acceptance state and
-[benchmark/RESULTS.md](benchmark/RESULTS.md) for the recorded measurements.
+[benchmark/RESULTS.md](benchmark/RESULTS.md) for measurements.
 
 ## Installation
 
-The package is not registered. Install it directly from GitHub:
+The package is not registered:
 
 ```julia
 using Pkg
 Pkg.add(url="https://github.com/yongjunx23-del/MultiFloatArithmetic.jl")
 ```
 
-## Accepted top-level API
+## API
 
 ```julia
 using MultiFloats
@@ -51,22 +48,21 @@ c = Float64x4(BigFloat("0.125"))
 z = fma_fast(x, y, c)
 ```
 
-`fma_fast` supports `Float64x2`, `Float64x3`, `Float64x4`, and matching
-`MultiFloatVec` values. The implementation is generic enough for binary32 and
-has smoke coverage there, but the present optimization target and benchmark
-decisions are binary64.
+`fma_fast` supports 2-, 3-, and 4-limb `MultiFloat` values and matching
+`MultiFloatVec` values. Binary32 has smoke coverage; binary64 is the primary
+optimization target.
 
 ## Numerical contract
 
-`fma_fast` is an **operand-relative** FMA research kernel. It is not a
-correctly-rounded FMA and does not provide a strong result-relative guarantee
-under destructive cancellation. Do not use it by default in residual,
-refinement, stopping-criterion, or certification code.
+`fma_fast` is an **operand-relative research FMA**, not a correctly rounded FMA.
+It does not promise a strong result-relative guarantee under destructive
+cancellation. Read [docs/NUMERICAL_CONTRACT.md](docs/NUMERICAL_CONTRACT.md)
+before using it in residual, refinement, stopping, feasibility, or certificate
+code.
 
-The arithmetic network must not be algebraically reordered, contracted beyond
-the explicit error-free transforms, or compiled under `@fastmath` without
-re-verification. Read [docs/NUMERICAL_CONTRACT.md](docs/NUMERICAL_CONTRACT.md)
-before downstream integration.
+The x2/x3 arithmetic networks are fixed-cost. The x4 correctness baseline is
+intentionally not branch-free because it ends in upstream `renormalize` after a
+concrete cancellation defect was found in the old FastTwoSum-based compression.
 
 ## Experimental namespace
 
@@ -74,12 +70,6 @@ Rejected or not-yet-accepted candidates remain available only for reproducible
 research:
 
 ```julia
-using MultiFloats
-using MultiFloatArithmetic
-
-x = Float64x4(1.25)
-y = Float64x4(0.75)
-
 z = MultiFloatArithmetic.Experimental.div_digits(x, y)
 ```
 
@@ -94,28 +84,31 @@ Pkg.test("MultiFloatArithmetic")
 
 include("benchmark/smoke.jl")
 include("benchmark/simd_widths.jl")
+include("benchmark/fma3_repair.jl")
+include("benchmark/fma4_safe.jl")
 include("benchmark/division_digits.jl")
 include("benchmark/codegen.jl")
 ```
 
-Hosted-runner timings are informational. A downstream kernel should be accepted
-only after architecture-specific repeated measurements and an end-to-end solver
-A/B.
+Hosted-runner timings are informational. A kernel should be selected only after
+measurements on the deployment CPU and an end-to-end downstream solver A/B.
 
 ## Roadmap
 
-1. Freeze x2/x3/x4 behavior and preserve a permanent adversarial corpus.
-2. Translate the accumulation networks into verifier inputs and obtain formal
-   non-overlap/error-bound evidence.
-3. Build a correctness-first x5 reference path before optimizing x5-x8.
-4. Add verified multiplication and direct FMA incrementally from x5 to x8.
-5. Implement reciprocal/division/square root through precision doubling.
-6. Build `MultiFloatVec`-native DOT/SYRK/TRSM/GEMM kernels.
-7. Integrate only accepted kernels into downstream solvers.
+1. Freeze x2/x3 and the cancellation-safe x4 baseline with permanent adversarial
+   corpora.
+2. Prove the current empirical error constants or replace them with proved ones.
+3. Derive a source-specific fixed-cost x4 compression if it beats the safe
+   baseline without reintroducing hidden magnitude assumptions.
+4. Build a correctness-first x5 reference implementation, then extend toward
+   x6-x8.
+5. Add reciprocal/division/square-root strategies at higher limb counts.
+6. Build MultiFloatVec-native DOT/SYRK/TRSM/GEMM kernels.
+7. Integrate only accepted arithmetic into downstream solvers.
 
 ## Status and license
 
-This remains research software. Passing CI establishes reproducible empirical
-evidence, not a formal proof or production guarantee.
+Research software; passing CI is reproducible empirical evidence, not a formal
+production guarantee.
 
 MIT.

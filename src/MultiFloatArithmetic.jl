@@ -9,7 +9,8 @@ multiply-add research kernel. Rejected or not-yet-accepted candidates live in
 module MultiFloatArithmetic
 
 using MultiFloats
-import MultiFloats: MultiFloat, MultiFloatVec, fast_two_sum, two_prod, two_sum
+import MultiFloats: MultiFloat, MultiFloatVec, fast_two_sum, renormalize,
+    two_prod, two_sum
 
 export Experimental, fma_fast, fma_fast_limbs
 
@@ -25,10 +26,10 @@ cancellation. Inputs are expected to be finite normalized expansions evaluated
 under IEEE round-to-nearest semantics without algebraic reassociation.
 """
 
-# Research kernels for branch-free fused multiply-add on fixed-length
-# MultiFloat expansions. T may be Float32/Float64 or the SIMD lane type used by
-# MultiFloatVec. Do not algebraically reorder these networks without
-# re-verifying the resulting floating-point accumulation network.
+# Research kernels for fused multiply-add on fixed-length MultiFloat expansions.
+# T may be Float32/Float64 or the SIMD lane type used by MultiFloatVec. Do not
+# algebraically reorder these networks without re-verifying the resulting
+# floating-point accumulation network.
 
 @inline function fma_fast_limbs(
     x::NTuple{2,T},
@@ -86,6 +87,13 @@ end
     w1, w2 = two_sum(w1, m2)
     z0, rho = two_sum(w0, w1)
     z1, z2 = fast_two_sum(rho, w2)
+
+    # FPANVerifier refuted the leading non-overlap relation after the first
+    # compression. A/B verification showed that one additional TwoSum followed
+    # by a tail FastTwoSum is the smallest fixed-cost repair that proves both
+    # output non-overlap relations. Do not remove or reorder these operations.
+    z0, z1 = two_sum(z0, z1)
+    z1, z2 = fast_two_sum(z1, z2)
     return (z0, z1, z2)
 end
 
@@ -142,20 +150,29 @@ end
     t1 = t1 + g5
     a3 = t3 + t1
 
-    w0, w1 = fast_two_sum(b, a1)
+    # The original x4 network used FastTwoSum for (b, a1). FPANVerifier found
+    # that cancellation can violate its magnitude precondition. Use only general
+    # TwoSum transforms in the compression, then delegate final canonical
+    # non-overlap restoration to MultiFloats.renormalize. This is intentionally
+    # the conservative correctness baseline; a fixed-cost branch-free repair is
+    # evaluated separately before it can replace this path.
+    w0, w1 = two_sum(b, a1)
     w1, w2 = two_sum(w1, a2)
     w2, w3 = two_sum(w2, a3)
     z0, rho = two_sum(w0, w1)
     z1, sigma = two_sum(rho, w2)
-    z2, z3 = fast_two_sum(sigma, w3)
-    return (z0, z1, z2, z3)
+    z2, z3 = two_sum(sigma, w3)
+    return renormalize((z0, z1, z2, z3))
 end
 
 """
     fma_fast(x, y, c)
 
-Evaluate the branch-free 2-, 3-, or 4-limb fused multiply-add research kernel
-for scalar `MultiFloat` values or lane-wise for `MultiFloatVec` values.
+Evaluate the 2-, 3-, or 4-limb fused multiply-add research kernel for scalar
+`MultiFloat` values or lane-wise for `MultiFloatVec` values. The x2/x3 paths are
+fixed-cost arithmetic networks; x4 currently ends in a conservative
+`renormalize` fallback while its cancellation-safe fixed-cost replacement is
+being verified.
 
 See `docs/NUMERICAL_CONTRACT.md` before using this operation in residual,
 refinement, stopping-criterion, or certificate code.
