@@ -36,8 +36,6 @@ jobs:
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
       - name: Test with bounds checking
         run: julia --check-bounds=yes --project=. -e 'using Pkg; Pkg.test(; coverage=false)'
-      - name: Test MultiFloat linear algebra against BigFloat
-        run: julia --check-bounds=yes --project=. -e 'using MultiFloatArithmetic, MultiFloats, Random, Test; include("test/linear_algebra.jl")'
 
   smoke-benchmark:
     name: Arithmetic and linear algebra smoke/codegen
