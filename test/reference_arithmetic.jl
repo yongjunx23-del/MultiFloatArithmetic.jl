@@ -105,11 +105,33 @@
         end
     end
 
+    @testset "Float32 reference packing smoke" begin
+        for N in (5, 8)
+            T = MultiFloat{Float32,N}
+            for _ in 1:6
+                x = T(random_dyadic(words=4, emin=-50, emax=50))
+                y = T(random_dyadic(words=4, emin=-50, emax=50))
+                c = T(random_dyadic(words=4, emin=-50, emax=50))
+                qx = Rational{BigInt}(x)
+                qy = Rational{BigInt}(y)
+                qc = Rational{BigInt}(c)
+
+                @test ref_add(x, y) === high_precision_pack(T, qx + qy)
+                @test ref_sub(x, y) === high_precision_pack(T, qx - qy)
+                @test ref_mul(x, y) === high_precision_pack(T, qx * qy)
+                @test ref_fma(x, y, c) === high_precision_pack(T, qx * qy + qc)
+            end
+        end
+    end
+
     @testset "reference domain is explicit" begin
         T4 = MultiFloat{Float64,4}
         T9 = MultiFloat{Float64,9}
         @test_throws ArgumentError ref_add(T4(1.0), T4(2.0))
         @test_throws ArgumentError ref_mul(T9(1.0), T9(2.0))
+
+        T16 = MultiFloat{Float16,5}
+        @test_throws ArgumentError ref_add(T16(1.0), T16(2.0))
 
         T5 = MultiFloat{Float64,5}
         @test_throws DomainError ref_add(T5(Inf), T5(1.0))
