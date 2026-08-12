@@ -1,0 +1,63 @@
+name: FPAN fixed-precision diagnostic
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/run_fpan_fixed_precision.sh'
+      - '.github/workflows/fpan-fixed.yml'
+      - 'verification/fma4.fpan'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-fma4-fixed:
+    name: fma4 p=${{ matrix.precision }} structural proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        precision: [24, 53]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out pinned FPANVerifier
+        uses: actions/checkout@v4
+        with:
+          repository: dzhang314/FPANVerifier
+          ref: 0a1314fa78aeab35793b7354eb097061380982e5
+          path: .verification-tools/FPANVerifier
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned Python Z3 and command adapter
+        run: |
+          python -m pip install --disable-pip-version-check z3-solver==4.13.4.0
+          mkdir -p .verification-tools/bin
+          cat > .verification-tools/bin/z3 <<'SH'
+          #!/usr/bin/env bash
+          exec python "$GITHUB_WORKSPACE/verification/z3_cli.py" "$@"
+          SH
+          chmod +x .verification-tools/bin/z3
+          echo "$GITHUB_WORKSPACE/.verification-tools/bin" >> "$GITHUB_PATH"
+          export PATH="$GITHUB_WORKSPACE/.verification-tools/bin:$PATH"
+          z3 --version
+          python -c 'import z3; print("Python Z3:", z3.get_version_string())'
+      - name: Verify Float32/Float64 precision model
+        env:
+          FPAN_TIMEOUT_SECONDS: '600'
+        run: >-
+          bash .github/scripts/run_fpan_fixed_precision.sh
+          .verification-tools/FPANVerifier
+          ${{ matrix.precision }}
+          verification/fma4.fpan
+      - name: Upload verification log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fpan-fma4-p${{ matrix.precision }}-log
+          path: fpan-fixed-p${{ matrix.precision }}.log
+          if-no-files-found: warn
+          retention-days: 30
