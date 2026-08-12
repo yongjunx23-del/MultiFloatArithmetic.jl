@@ -20,7 +20,7 @@ cross-checks the pack against independent 8192-bit BigFloat results.
 
 ## M3 addition — safe family complete baseline
 
-A single `Experimental.add_safe` construction now covers Float64 x5-x8:
+A single `Experimental.add_safe` construction covers Float64 x5-x8:
 
 1. N same-index general TwoSums;
 2. full renormalization of the exact 2N terms;
@@ -28,10 +28,6 @@ A single `Experimental.add_safe` construction now covers Float64 x5-x8:
 
 Width-specific wrappers `add5_safe` ... `add8_safe` share this implementation.
 No FastTwoSum is used.
-
-Permanent width-specific corpora require exact head+tail accounting, bitwise
-`reference_add` agreement, normalization, commutativity, exact identities, deep
-cancellation, power/carry boundaries, and unbalanced operands.
 
 First maximum observed `|err|/(u^N(|x|+|y|))` values:
 
@@ -48,19 +44,51 @@ Derive a reviewable discarded-tail bound for the common 2N-term construction.
 Only after that proof work should fixed-cost add5-add8 networks be searched.
 Every proposed FastTwoSum must prove its source-specific ordering.
 
-## M4 multiplication — next implementation milestone
+## M4 multiplication — Float64x5 safe baseline accepted
 
-Start with Float64x5 only. The first candidate should be deliberately
-over-complete: retain enough exact product components/error terms to account for
-the full product before final N-limb truncation, fully normalize, compare against
-`reference_mul`, and measure the discarded normalized tail.
+`Experimental.mul5_safe` is deliberately over-complete:
+
+1. compute every 5x5 limb pair with TwoProd;
+2. preserve all 25 rounded products and all 25 residuals;
+3. canonicalize signed zeros and sort the 50 finite components so operand swap
+   produces an identical term sequence;
+4. fully renormalize the exact 50-term expansion;
+5. retain five leading limbs and renormalize the head.
+
+No FastTwoSum is used.
+
+Permanent gates require each individual TwoProd to reconstruct its exact dyadic
+pair product, exact returned-head + discarded-tail accounting, bitwise
+`reference_mul` agreement, normalized output/full expansion, and bitwise
+commutativity.
+
+The first diagnostics found zero oracle/normalization/commutativity failures and
+max `|err|/(u^5|xy|) ≈ 0.0484069`. CI uses C=1 only as an empirical gate.
+The current baseline rejects nonfinite or subnormal TwoProd components and pair
+products that underflow to zero until underflow semantics are proved.
+
+The first scalar timing was 33.557 ms for 500 products on Zen 3. This cost is
+acceptable only because M4 is still establishing a correctness source of truth.
+
+### M4 next
+
+Generalize the same over-complete product construction to safe Float64x6, x7,
+and x8. Each width must independently establish:
+
+- exact primitive TwoProd decomposition in its accepted domain;
+- exact full-product head+tail accounting;
+- bitwise `reference_mul` equality;
+- commutativity and normalization;
+- separate empirical relative-error constants;
+- explicit overflow/subnormal/underflow behavior.
 
 Acceptance sequence:
 
-`mul5_safe -> exact-tail/oracle/cancellation/commutativity gates -> tail-bound
-study -> safe mul6/mul7/mul8 -> formal bound -> fixed-cost search`.
+`mul5_safe -> safe mul6/mul7/mul8 -> formal multiplication tail bound -> fixed-cost search`.
 
-Do not copy lower-width FastTwoSum assumptions into M4.
+Do not copy lower-width FastTwoSum assumptions into M4. Do not optimize away the
+canonicalization until a proposed accumulation ordering has a commutativity and
+error proof.
 
 ## M5-M7 direction
 

@@ -22,3 +22,16 @@
   (x6), ~0.01099 (x7), and ~0.00542 (x8), all below the empirical C=1 gate.
 - Record first safe-add scalar timings for 5,000 operations: 0.454 ms (x5),
   0.545 ms (x6), 0.710 ms (x7), 1.438 ms (x8) on the cited Zen 3 runner.
+- Start M4 with `Experimental.mul5_safe`, an over-complete Float64x5
+  multiplication baseline that preserves all 25 TwoProd products and residuals,
+  canonicalizes 50 finite terms, fully renormalizes, and truncates only after the
+  exact product expansion is formed.
+- Add pair-by-pair exact TwoProd reconstruction, exact five-limb head + 45-limb
+  tail accounting, bitwise `reference_mul` equality, commutativity, sign,
+  power-of-two, boundary, overflow, and underflow-domain tests for `mul5_safe`.
+- Add an empirical C=1 relative multiplication gate. The first diagnostic found
+  zero oracle/normalization/commutativity failures and a maximum observed
+  `|err|/(u^5|x*y|)` of ~0.04841.
+- Record the first safe-mul timing: 33.557 ms for 500 Float64x5 scalar products
+  on the cited Zen 3 runner; this deliberately slow path remains a correctness
+  baseline rather than a performance candidate.

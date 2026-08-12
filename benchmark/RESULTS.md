@@ -2,6 +2,35 @@
 
 These are informational GitHub-hosted-runner snapshots, not portable hard gates.
 
+## Safe Float64x5 multiplication — 2026-08-12 — Zen 3
+
+Julia 1.10.11. `mul5_safe` is the M4 correctness baseline: all 25 limb products
+are evaluated with TwoProd, both product/residual components are retained,
+canonicalized, fully renormalized as 50 terms, and only then truncated to five
+limbs.
+
+| Corpus | Cases | Oracle mismatches | Normalization failures | Commutativity failures | Max `|err|/(u^5|xy|)` |
+|---|---:|---:|---:|---:|---:|
+| dense ordinary | 300 | 0 | 0 | 0 | 0.0484069 |
+| scaled | 300 | 0 | 0 | 0 | 0.0417276 |
+| powers of two | 25 | 0 | 0 | 0 | 0 |
+
+Every dense/scaled case had a nonzero discarded tail while the five-limb result
+still matched `reference_mul` bit-for-bit. The permanent unit corpus additionally
+checks every individual TwoProd pair with exact `Rational{BigInt}` arithmetic.
+
+First scalar timing:
+
+- **33.557 ms for 500 Float64x5 products**.
+
+This timing is intentionally poor and is not a regression target: sorting and
+full 50-term renormalization exist to provide a defensible multiplication source
+of truth before fixed-cost search. CI uses C=1 as an empirical relative-error
+gate, not a proved bound.
+
+The current safe-mul domain excludes nonfinite TwoProd components, nonzero
+subnormal product/residual components, and pair products that underflow to zero.
+
 ## Safe Float64x5-x8 addition — 2026-08-12 — Zen 3
 
 Julia 1.10.11. The implementation is the common M3 correctness baseline, not a
@@ -37,7 +66,10 @@ vector results are architecture/type dependent. It remains Experimental only.
 ## Interpretation
 
 - correctness evidence overrides wall-time wins;
-- safe add5-add8 is currently an oracle-matching baseline, not an optimized API;
-- each width keeps its own empirical tail measurement;
+- safe add5-add8 and mul5 are oracle-matching baselines, not optimized APIs;
+- addition and multiplication keep operation/width-specific empirical tail
+  measurements;
 - fixed-cost minimization starts only after formal tail analysis;
+- the current multiplication baseline is deliberately much slower than any
+  future acceptable kernel;
 - all performance claims require deployment-CPU and downstream solver A/B.
