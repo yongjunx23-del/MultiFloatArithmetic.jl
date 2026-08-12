@@ -1,0 +1,44 @@
+# Float64x2/Float32x2 fma_fast accumulation network.
+#
+# Plain rounded additions from the Julia implementation are represented by
+# two_sum operations whose error output is intentionally discarded. This keeps
+# the first output exactly equal to the rounded addition executed by Julia.
+
+variable x0
+variable x1
+variable y0
+variable y1
+variable c0
+variable c1
+
+assume x0 strongly_dominates x1
+assume y0 strongly_dominates y1
+assume c0 strongly_dominates c1
+
+variable p00
+variable e00
+two_prod x0 y0 p00 e00
+
+# Rounded one-product terms; the exact product residuals are discarded by the
+# implementation, so e01/e10 are not consumed below.
+variable p01
+variable e01
+two_prod x0 y1 p01 e01
+
+variable p10
+variable e10
+two_prod x1 y0 p10 e10
+
+# cross = p01 + p10
+# low   = (e00 + c1) + cross
+# high, carry = two_sum(p00, c0)
+# carry = carry + low
+# z0, z1 = fast_two_sum(high, carry)
+two_sum      p01 p10
+two_sum      e00 c1
+two_sum      e00 p01
+two_sum      p00 c0
+two_sum      c0 e00
+fast_two_sum p00 c0
+
+prove p00 strongly_dominates c0

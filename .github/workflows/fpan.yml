@@ -1,0 +1,50 @@
+name: FPAN verification
+
+on:
+  pull_request:
+    paths:
+      - 'verification/**'
+      - 'src/MultiFloatArithmetic.jl'
+      - '.github/workflows/fpan.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'verification/**'
+      - 'src/MultiFloatArithmetic.jl'
+      - '.github/workflows/fpan.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-fpan:
+    name: x2-x4 structural proof obligations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out pinned FPANVerifier
+        uses: actions/checkout@v4
+        with:
+          repository: dzhang314/FPANVerifier
+          ref: 0a1314fa78aeab35793b7354eb097061380982e5
+          path: .verification-tools/FPANVerifier
+          persist-credentials: false
+      - name: Install Z3
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes z3
+          python3 -m pip install --disable-pip-version-check z3-solver==4.13.4.0
+          z3 --version
+          python3 -c 'import z3; print("Python Z3:", z3.get_version_string())'
+      - name: Verify source-mirrored FPANs
+        run: bash verification/run_fpan.sh .verification-tools/FPANVerifier
+      - name: Upload verification log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fpan-verification-log
+          path: fpan-verification.log
+          if-no-files-found: error
+          retention-days: 30
