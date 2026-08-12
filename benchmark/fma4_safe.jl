@@ -199,7 +199,7 @@ function benchmark_vector(::Val{W}; scalar_lanes=20_000) where {W}
 end
 
 function cancellation_diagnostic(; n=10_000)
-    Random.seed!(0xc4nc_2026)
+    Random.seed!(0xc4ac_2026)
     T = Float64x4
     violations = 0
     changed = 0
