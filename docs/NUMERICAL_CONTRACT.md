@@ -80,9 +80,10 @@ Every arithmetic-network change must therefore rerun:
 ## Experimental operations
 
 `Experimental.mul_scalar` and `Experimental.div_digits` are retained to
-reproduce a completed A/B study. They are not performance recommendations. The
-quotient-digit division candidate was slower than upstream division in every
-Float64x2/x3/x4 scalar and Vec4 case measured on the 2026-08-11 hosted runner.
+reproduce completed A/B studies. They are not performance recommendations. The
+quotient-digit division scalar path was much slower than upstream division on
+both recorded runners. Vec4 results were mixed: most cases lost, while the Zen 3
+Float64x3 case won. This architecture dependence is insufficient for promotion.
 
 ## Formal verification target
 

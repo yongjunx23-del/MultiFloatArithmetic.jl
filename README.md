@@ -17,15 +17,17 @@ multiply-add**. The x5-x8 reference path, formal verification, higher-limb
 multiplication/division, and native linear algebra backend have not yet been
 implemented.
 
-The 2026-08-11 hosted-runner study produced these decisions:
+Two hosted-runner studies on different CPU targets produced these decisions:
 
-- keep the x2 scalar FMA as a performance candidate;
-- keep x3/x4 scalar FMA opt-in because they regressed on that runner;
-- continue the SIMD FMA path, which improved all tested Vec2/Vec4/Vec8 cases;
-- retain quotient-digit division only under `Experimental`, because upstream
-  division was faster in every tested scalar and Vec4 case.
+- keep the x2 scalar FMA as a marginal, architecture-dependent candidate;
+- keep x3/x4 scalar FMA opt-in because they regressed on both runners;
+- continue SIMD FMA as the main optimization path, but do not auto-select it:
+  the tested vector cases were mostly faster, with one slight x2 Vec8 regression;
+- retain quotient-digit division only under `Experimental`: its scalar path was
+  consistently much slower, while Vec4 results were architecture-dependent.
 
-See [STATUS.md](STATUS.md) for the measurements and acceptance state.
+See [STATUS.md](STATUS.md) for the acceptance state and
+[benchmark/RESULTS.md](benchmark/RESULTS.md) for the recorded measurements.
 
 ## Installation
 

@@ -20,19 +20,26 @@ A practical estimate is:
 
 ## Kernel decisions
 
-| Component | Evidence | 2026-08-11 performance evidence | Decision |
-|---|---|---:|---|
-| Float64x2 scalar `fma_fast` | BigFloat differential tests, normalization, commutativity, cancellation corpus | 1.087x vs `x*y+c` | top-level opt-in candidate |
-| Float64x3 scalar `fma_fast` | same | 0.831x | keep opt-in; do not auto-select |
-| Float64x4 scalar `fma_fast` | same | 0.900x | keep opt-in; do not auto-select |
-| Vec2/Vec4/Vec8 `fma_fast` | scalar-lane bitwise equivalence and operand-relative checks | 1.033x-2.017x across tested cases | continue as the main optimization path |
-| specialized expansion × one-limb multiply | bitwise equivalence to zero-padded upstream `mfmul` | only about 0.6%-4.2% over the full residual product | experimental helper only |
-| quotient-digit division | BigFloat relative-error checks and lane equivalence | upstream `/` was about 1.09x-4.22x faster | rejected as default; retain for reproducibility |
-| Float64x5-Float64x8 arithmetic | research plan only | none | not implemented |
-| DOT/SYRK/TRSM/GEMM backend | roadmap only | none | not implemented |
+Two informational CI measurements are now recorded: run 21 used an Ice Lake
+runner, while PR run 24 used a Zen 3 runner. The runner change is useful evidence
+that these timings are architecture-sensitive rather than portable guarantees.
+Full output is preserved in [benchmark/RESULTS.md](benchmark/RESULTS.md).
 
-The timing data above came from CI run 21 on an Ice Lake hosted runner. These
-numbers are directional, not portable performance guarantees.
+| Component | Ice Lake evidence | Zen 3 evidence | Decision |
+|---|---:|---:|---|
+| Float64x2 scalar `fma_fast` | 1.087x | 1.020x | marginal top-level opt-in candidate; no auto-selection |
+| Float64x3 scalar `fma_fast` | 0.831x | 0.488x | keep opt-in; scalar regression |
+| Float64x4 scalar `fma_fast` | 0.900x | 0.510x | keep opt-in; scalar regression |
+| Vec2/Vec4/Vec8 `fma_fast` | 1.033x-2.017x | 0.942x-2.537x | main optimization path, but architecture/width gated |
+| specialized expansion × one-limb multiply | 0.981x-1.042x versus full product | 1.007x-1.096x | near-parity experimental helper only |
+| quotient-digit division | upstream faster in all six cases | scalar loses badly; Vec4 mixed, including one x3 win | rejected as default; retain for reproducibility |
+| Float64x5-Float64x8 arithmetic | none | none | not implemented |
+| DOT/SYRK/TRSM/GEMM backend | none | none | not implemented |
+
+For FMA, values above one favor `fma_fast`. For the specialized one-limb
+product, values above one favor the specialized product over the zero-padded
+full product. Quotient-division evidence is summarized rather than collapsed
+into one ratio because its winner changes by width and architecture.
 
 ## Acceptance gates
 

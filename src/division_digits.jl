@@ -3,9 +3,10 @@
 # The outer algorithm extracts one base-limb quotient digit at a time. Residual
 # products use the specialized expansion × one-limb network in mul_scalar.jl;
 # residual subtraction still uses MultiFloats v3's mfadd network. The candidate
-# is retained only to reproduce the correctness and performance study. The
-# 2026-08-11 hosted-runner A/B showed that upstream division was faster for all
-# tested scalar and Vec4 Float64x2/x3/x4 cases.
+# is retained only to reproduce the correctness and performance study. Two
+# hosted-runner A/Bs showed a consistently much slower scalar path and
+# architecture-dependent Vec4 results. One Zen 3 x3 Vec4 case won, but the
+# candidate did not establish a stable enough benefit to replace upstream `/`.
 
 """
     div_digits_limbs(x, y, Val(N))
