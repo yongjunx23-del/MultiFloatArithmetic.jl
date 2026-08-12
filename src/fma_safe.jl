@@ -5,9 +5,15 @@
 # truncation. The full `2N^2 + N` component expansion is canonicalized, fully
 # renormalized, and only then reduced to an N-limb head.
 #
-# This is deliberately branchy/allocating and is not a performance path.
+# This file is included after the already-frozen x5 implementation. It adds the
+# generic family and x6-x8 wrappers without overriding the existing x5 wrapper;
+# tests require generic x5 to be bitwise identical to `fma5_safe`.
 
-@inline _canonical_fma_term(x::Float64) = iszero(x) ? 0.0 : x
+export fma_safe, fma_safe_limbs
+export fma6_safe, fma6_safe_limbs, fma7_safe, fma7_safe_limbs
+export fma8_safe, fma8_safe_limbs
+
+@inline _canonical_fma_safe_term(x::Float64) = iszero(x) ? 0.0 : x
 
 function _fma_safe_terms(
     x::NTuple{N,Float64},
@@ -30,7 +36,7 @@ function _fma_safe_terms(
     @inbounds for i in 1:N
         ci = c[i]
         isfinite(ci) || throw(DomainError(ci, "fma_safe requires finite addend limbs"))
-        terms[nproduct + i] = _canonical_fma_term(ci)
+        terms[nproduct + i] = _canonical_fma_safe_term(ci)
     end
 
     # Product components are invariant as a multiset under x <-> y; c is
@@ -52,19 +58,6 @@ function _fma_safe_full_limbs(
     ))
     return full
 end
-
-# Preserve the already-frozen x5 diagnostic names.
-_fma5_terms(
-    x::NTuple{5,Float64},
-    y::NTuple{5,Float64},
-    c::NTuple{5,Float64},
-) = _fma_safe_terms(x, y, c)
-
-_fma5_full_limbs(
-    x::NTuple{5,Float64},
-    y::NTuple{5,Float64},
-    c::NTuple{5,Float64},
-) = _fma_safe_full_limbs(x, y, c)
 
 """
     fma_safe_limbs(x, y, c)
@@ -121,8 +114,6 @@ function fma_safe(
     return MultiFloat{Float64,N}(fma_safe_limbs(x._limbs, y._limbs, c._limbs))
 end
 
-fma5_safe_limbs(x::NTuple{5,Float64}, y::NTuple{5,Float64}, c::NTuple{5,Float64}) =
-    fma_safe_limbs(x, y, c)
 fma6_safe_limbs(x::NTuple{6,Float64}, y::NTuple{6,Float64}, c::NTuple{6,Float64}) =
     fma_safe_limbs(x, y, c)
 fma7_safe_limbs(x::NTuple{7,Float64}, y::NTuple{7,Float64}, c::NTuple{7,Float64}) =
@@ -130,8 +121,6 @@ fma7_safe_limbs(x::NTuple{7,Float64}, y::NTuple{7,Float64}, c::NTuple{7,Float64}
 fma8_safe_limbs(x::NTuple{8,Float64}, y::NTuple{8,Float64}, c::NTuple{8,Float64}) =
     fma_safe_limbs(x, y, c)
 
-fma5_safe(x::MultiFloat{Float64,5}, y::MultiFloat{Float64,5}, c::MultiFloat{Float64,5}) =
-    fma_safe(x, y, c)
 fma6_safe(x::MultiFloat{Float64,6}, y::MultiFloat{Float64,6}, c::MultiFloat{Float64,6}) =
     fma_safe(x, y, c)
 fma7_safe(x::MultiFloat{Float64,7}, y::MultiFloat{Float64,7}, c::MultiFloat{Float64,7}) =
