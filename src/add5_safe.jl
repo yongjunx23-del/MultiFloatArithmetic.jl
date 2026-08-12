@@ -29,16 +29,16 @@ end
 """
     add5_safe_limbs(x, y)
 
-Correctness-first five-limb addition candidate. The inputs must be normalized
-finite Float64 expansion limbs. The algorithm fully renormalizes an exact
-10-term TwoSum expansion before discarding the low five terms.
+Correctness-first Float64 five-limb addition candidate. The inputs must be
+normalized finite Float64 expansion limbs. The algorithm fully renormalizes an
+exact 10-term TwoSum expansion before discarding the low five terms.
 
 This is a research baseline, not a fixed-cost performance kernel.
 """
 @inline function add5_safe_limbs(
-    x::NTuple{5,T},
-    y::NTuple{5,T},
-) where {T}
+    x::NTuple{5,Float64},
+    y::NTuple{5,Float64},
+)
     full = _add5_full_limbs(x, y)
     head = ntuple(i -> full[i], Val{5}())
     return renormalize(head)
