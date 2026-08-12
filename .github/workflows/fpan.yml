@@ -3,13 +3,19 @@ name: FPAN verification
 on:
   pull_request:
     paths:
-      - 'verification/**'
+      - 'verification/fma2.fpan'
+      - 'verification/fma3.fpan'
+      - 'verification/run_fpan.sh'
+      - 'verification/z3_cli.py'
       - 'src/MultiFloatArithmetic.jl'
       - '.github/workflows/fpan.yml'
   push:
     branches: [main]
     paths:
-      - 'verification/**'
+      - 'verification/fma2.fpan'
+      - 'verification/fma3.fpan'
+      - 'verification/run_fpan.sh'
+      - 'verification/z3_cli.py'
       - 'src/MultiFloatArithmetic.jl'
       - '.github/workflows/fpan.yml'
   workflow_dispatch:

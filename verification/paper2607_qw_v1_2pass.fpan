@@ -1,0 +1,111 @@
+# Former arXiv:2607.11391 QW FMA: 146-flop / two-pass normalization.
+#
+# This diagnostic shares the same accumulation prefix as the current v4 QW
+# model, but stops after the former two normalization cascades. The current
+# paper reports that the FastTwoSum gates themselves are valid, while the first
+# two adjacent output non-overlap claims cannot be proved in the SELTZO domain.
+# CI treats exactly those two proof refutations as the expected result.
+
+variable x0
+variable x1
+variable x2
+variable x3
+variable y0
+variable y1
+variable y2
+variable y3
+variable c0
+variable c1
+variable c2
+variable c3
+
+assume x0 strongly_dominates x1
+assume x1 strongly_dominates x2
+assume x2 strongly_dominates x3
+assume y0 strongly_dominates y1
+assume y1 strongly_dominates y2
+assume y2 strongly_dominates y3
+assume c0 strongly_dominates c1
+assume c1 strongly_dominates c2
+assume c2 strongly_dominates c3
+
+variable p00
+variable e00
+variable p01
+variable e01
+variable p10
+variable e10
+variable p02
+variable e02
+variable p11
+variable e11
+variable p20
+variable e20
+variable p03
+variable e03
+variable p12
+variable e12
+variable p21
+variable e21
+variable p30
+variable e30
+
+two_prod x0 y0 p00 e00
+two_prod x0 y1 p01 e01
+two_prod x1 y0 p10 e10
+two_prod x0 y2 p02 e02
+two_prod x1 y1 p11 e11
+two_prod x2 y0 p20 e20
+two_prod x0 y3 p03 e03
+two_prod x1 y2 p12 e12
+two_prod x2 y1 p21 e21
+two_prod x3 y0 p30 e30
+
+two_sum p03 p30
+two_sum p12 p21
+two_sum p03 p12
+
+two_sum p00 c0
+
+two_sum p01 p10
+two_sum p01 e00
+two_sum p01 c1
+two_sum p01 c0
+
+two_sum p02 p20
+two_sum p02 p11
+two_sum e01 e10
+two_sum p02 e01
+two_sum p02 c2
+two_sum p02 p10
+two_sum p02 e00
+two_sum p02 c1
+two_sum p02 c0
+
+two_sum e02 e20
+two_sum e11 p03
+two_sum e02 e11
+two_sum e02 c3
+
+two_sum p20 p11
+two_sum e01 e10
+two_sum p20 e01
+two_sum p10 e00
+two_sum c1 c0
+two_sum p10 c1
+two_sum p20 p10
+two_sum p20 c2
+two_sum e02 p20
+
+# Former normalization: pass 1 = F T T, pass 2 = T T F.
+fast_two_sum p00 p01
+two_sum      p01 p02
+two_sum      p02 e02
+
+two_sum      p00 p01
+two_sum      p01 p02
+fast_two_sum p02 e02
+
+prove p00 strongly_dominates p01
+prove p01 strongly_dominates p02
+prove p02 strongly_dominates e02
