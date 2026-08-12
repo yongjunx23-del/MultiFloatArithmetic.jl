@@ -47,6 +47,7 @@ end
     @test :add6_safe ∉ public_names
     @test :add7_safe ∉ public_names
     @test :add8_safe ∉ public_names
+    @test :mul5_safe ∉ public_names
     @test :div_digits ∉ public_names
     @test :mul_scalar ∉ public_names
     @test :reference_add ∉ public_names
@@ -55,6 +56,7 @@ end
     @test :add6_safe in experimental_names
     @test :add7_safe in experimental_names
     @test :add8_safe in experimental_names
+    @test :mul5_safe in experimental_names
     @test :div_digits in experimental_names
     @test :mul_scalar in experimental_names
     @test :reference_add in experimental_names
@@ -230,3 +232,4 @@ include("division_digits.jl")
 include("reference_arithmetic.jl")
 include("add5_safe.jl")
 include("add6_add8_safe.jl")
+include("mul5_safe.jl")
