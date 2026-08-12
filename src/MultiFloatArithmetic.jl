@@ -273,5 +273,6 @@ end # module Experimental
 
 include("linear_algebra.jl")
 include("linear_algebra_microkernels.jl")
+include("linear_algebra_blocked.jl")
 
 end # module MultiFloatArithmetic
