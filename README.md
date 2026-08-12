@@ -11,33 +11,29 @@ come before instruction-count wins.
 
 ## Current stage
 
-The project is at **M3: safe higher-limb addition baselines**.
+The M3 safe-addition baseline now covers **Float64x5 through Float64x8**.
 
-- x2 has a pinned structural proof;
-- x3 has a proof-driven fixed-cost normalization repair and pinned structural
-  proof;
+- x2 has a pinned structural FMA proof;
+- x3 has a proof-driven fixed-cost normalization repair and structural proof;
 - x4 uses a conservative TwoSum + `renormalize` baseline after a concrete
-  FastTwoSum cancellation defect was found in the old network;
-- x5-x8 have exact-rational Experimental add/sub/mul/FMA reference oracles;
-- Float64x5 now has a no-FastTwoSum safe addition baseline matching the exact
-  five-limb oracle on the permanent corpus;
-- safe add6-add8, optimized multiplication/FMA, formal error constants, and
-  native linear algebra remain future work.
+  FastTwoSum cancellation defect was found;
+- x5-x8 have exact-rational Experimental add/sub/mul/FMA oracles;
+- x5-x8 share one no-FastTwoSum safe addition implementation that matches the
+  exact five/eight-limb oracle on permanent width-specific corpora;
+- formal higher-limb addition bounds, optimized multiplication/FMA, and native
+  linear algebra remain future work.
 
 See [STATUS.md](STATUS.md), [docs/REFERENCE_X5_X8.md](docs/REFERENCE_X5_X8.md),
-[docs/ADD5_SAFE.md](docs/ADD5_SAFE.md), and
-[benchmark/RESULTS.md](benchmark/RESULTS.md).
+and [docs/ADD_SAFE_X5_X8.md](docs/ADD_SAFE_X5_X8.md).
 
 ## Installation
-
-The package is not registered:
 
 ```julia
 using Pkg
 Pkg.add(url="https://github.com/yongjunx23-del/MultiFloatArithmetic.jl")
 ```
 
-## Accepted research API
+## Accepted research FMA API
 
 ```julia
 using MultiFloats
@@ -46,80 +42,52 @@ using MultiFloatArithmetic
 x = Float64x4(BigFloat("1.234567890123456789"))
 y = Float64x4(BigFloat("0.987654321098765432"))
 c = Float64x4(BigFloat("0.125"))
-
 z = fma_fast(x, y, c)
 ```
 
-`fma_fast` supports 2-, 3-, and 4-limb `MultiFloat` values and matching
-`MultiFloatVec` values. Binary32 has smoke coverage; binary64 is the primary
-optimization target.
+`fma_fast` supports 2-, 3-, and 4-limb values. It is an operand-relative research
+kernel, not a correctly rounded FMA; read `docs/NUMERICAL_CONTRACT.md` before
+using it in residual/certificate code.
 
-## Higher-limb correctness oracle
-
-Higher-limb work begins under `Experimental`, not the accepted hot API:
+## Higher-limb exact oracle
 
 ```julia
 const E = MultiFloatArithmetic.Experimental
-T = MultiFloat{Float64,8}
+T8 = MultiFloat{Float64,8}
+x8 = T8(BigFloat("1.2345678901234567890123456789"))
+y8 = T8(BigFloat("0.9876543210987654321098765432"))
 
-x = T(BigFloat("1.2345678901234567890123456789"))
-y = T(BigFloat("0.9876543210987654321098765432"))
-c = T(BigFloat("0.125"))
-
-s = E.reference_add(x, y)
-p = E.reference_mul(x, y)
-f = E.reference_fma(x, y, c)
+oracle_sum = E.reference_add(x8, y8)
+oracle_product = E.reference_mul(x8, y8)
 ```
 
-`reference_add`, `reference_sub`, `reference_mul`, and `reference_fma` support
-Float32/Float64 with 5-8 limbs. They use exact `Rational{BigInt}` arithmetic and
-pack the exact result once. CI cross-checks packing against an independent
-8192-bit BigFloat result.
+`reference_add/sub/mul/fma` support Float32/Float64 N=5:8 and deliberately use
+exact `Rational{BigInt}` arithmetic before one final pack.
 
-## Safe Float64x5 addition baseline
-
-M3 starts with correctness, not a short network:
+## Safe Float64x5-x8 addition baseline
 
 ```julia
-T5 = MultiFloat{Float64,5}
-x5 = T5(BigFloat("1.2345678901234567890123456789012345"))
-y5 = T5(BigFloat("-0.234567890123456789012345678901"))
-
-z5 = E.add5_safe(x5, y5)
+safe_sum = E.add_safe(x8, y8)
+# or width-specific wrappers E.add5_safe ... E.add8_safe
 ```
 
-`add5_safe` applies five general TwoSums, fully renormalizes the exact ten-term
-expansion, truncates to five limbs, and renormalizes the head. It introduces no
-FastTwoSum magnitude assumptions.
+For width N, `add_safe` uses N general TwoSums, fully renormalizes the exact 2N
+terms, keeps the N-limb head, and renormalizes it. No FastTwoSum assumption is
+introduced.
 
-The permanent corpus requires exact discarded-tail accounting, normalized
-output, bitwise commutativity, and bitwise equality with `reference_add`. The
-first diagnostic measured a worst observed operand-relative constant of about
-`0.05284` in units of `u^5(|x|+|y|)`; CI uses `C=1` only as a conservative
-empirical regression gate, not a theorem.
-
-## Numerical contract
-
-`fma_fast` is an **operand-relative research FMA**, not a correctly rounded FMA.
-It does not promise a strong result-relative guarantee under destructive
-cancellation. Read [docs/NUMERICAL_CONTRACT.md](docs/NUMERICAL_CONTRACT.md)
-before using it in residual, refinement, stopping, feasibility, or certificate
-code.
-
-The x2/x3 arithmetic networks are fixed-cost. The x4 correctness baseline is
-intentionally not branch-free because it ends in upstream `renormalize` after a
-concrete cancellation defect was found in the old FastTwoSum-based compression.
+The permanent corpora require exact head+discarded-tail accounting, normalized
+output, bitwise commutativity, and bitwise equality with `reference_add`.
+First observed operand-relative constants were approximately 0.05283 (x5),
+0.02548 (x6), 0.01099 (x7), and 0.00542 (x8) in units of
+`u^N(|x|+|y|)`. CI uses C=1 only as an empirical regression gate.
 
 ## Experimental namespace
 
-Experimental APIs include rejected performance candidates, correctness oracles,
-and safe higher-limb baselines. They may change without deprecation during the
-0.x series and must not be treated as production performance recommendations.
+Experimental APIs include rejected performance candidates, exact correctness
+oracles, and safe higher-limb baselines. They may change without deprecation
+during the 0.x series and are not production performance recommendations.
 
-Quotient-digit division remains only for reproducibility; `reference_*` and
-`add5_safe` are correctness-first research tools.
-
-## Reproducing the evidence
+## Reproducing evidence
 
 ```julia
 using Pkg
@@ -130,32 +98,23 @@ include("benchmark/simd_widths.jl")
 include("benchmark/fma3_repair.jl")
 include("benchmark/fma4_safe.jl")
 include("benchmark/add5_safe.jl")
+include("benchmark/add6_add8_safe.jl")
 include("benchmark/division_digits.jl")
 include("benchmark/codegen.jl")
 ```
 
-Hosted-runner timings are informational. A kernel should be selected only after
-measurements on the deployment CPU and an end-to-end downstream solver A/B.
-
 ## Roadmap
 
-1. **M3:** freeze safe add5, then extend the same no-FastTwoSum baseline through
-   add6-add8 and establish empirical discarded-tail gates per width.
-2. Derive formal higher-limb addition bounds, then search fixed-cost networks.
-3. **M4:** build commutative multiplication x5 through x8.
-4. **M5:** build direct FMA/submul x5 through x8.
-5. **M6:** add reciprocal/division/square-root strategies via precision doubling.
-6. **M7:** build MultiFloatVec-native DOT/SYRK/TRSM/GEMM kernels.
-7. Integrate only accepted arithmetic into downstream solvers.
+1. Freeze the safe x5-x8 addition family and derive a formal discarded-tail
+   bound before fixed-cost addition minimization.
+2. **M4:** build a correctness-first commutative Float64x5 multiplication
+   baseline, then extend through x8.
+3. **M5:** direct FMA/submul x5 through x8.
+4. **M6:** reciprocal/division/sqrt via precision doubling.
+5. **M7:** MultiFloatVec-native DOT/SYRK/TRSM/GEMM.
+6. Integrate only accepted arithmetic into downstream solvers.
 
-In parallel, the current x2/x3 empirical error constants still need formal proof
-(or replacement with proved constants), and a fixed-cost x4 compression remains
-optional research if it can beat the safe baseline without hidden magnitude
-assumptions.
-
-## Status and license
-
-Research software; passing CI is reproducible empirical evidence, not a formal
-production guarantee.
+Research software; passing CI is reproducible evidence, not a production/formal
+guarantee.
 
 MIT.
