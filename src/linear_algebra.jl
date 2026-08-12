@@ -33,11 +33,11 @@ end
 """
     mfdot(x, y)
 
-Compute a MultiFloat dot product with a chained direct-FMA accumulator.
+Compute a MultiFloat dot product with an ordered chained direct-FMA accumulator.
 
 For x2/x3/x4 the accumulator returned by every `fma_fast` step is canonical,
-so the next multiply-add starts from a valid normalized expansion. This is the
-primitive used by the higher-level matrix kernels in this module.
+so the next multiply-add starts from a valid normalized expansion. The reduction
+order is part of the numerical contract and is deliberately not marked `@simd`.
 """
 function mfdot(
     x::AbstractVector{MultiFloat{T,N}},
@@ -49,7 +49,7 @@ function mfdot(
         "dot product lengths differ: $(length(x)) and $(length(y))"))
 
     s = zero(M)
-    @inbounds @simd for idx in eachindex(x, y)
+    @inbounds for idx in eachindex(x, y)
         s = fma_fast(x[idx], y[idx], s)
     end
     return s
