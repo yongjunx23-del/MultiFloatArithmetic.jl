@@ -23,13 +23,9 @@ function _fma_safe_terms(
     N in 5:8 || throw(ArgumentError(
         "safe direct FMA currently supports N = 5, 6, 7, or 8",
     ))
-
-    # Reuse only the exact TwoProd component decomposition, never the rounded
-    # N-limb multiplication result.
     product_terms = _mul_safe_terms(x, y)
     nproduct = 2 * N^2
     terms = Vector{Float64}(undef, nproduct + N)
-
     @inbounds for i in 1:nproduct
         terms[i] = product_terms[i]
     end
@@ -38,10 +34,6 @@ function _fma_safe_terms(
         isfinite(ci) || throw(DomainError(ci, "fma_safe requires finite addend limbs"))
         terms[nproduct + i] = _canonical_fma_safe_term(ci)
     end
-
-    # Product components are invariant as a multiset under x <-> y; c is
-    # unchanged. Canonical sorting makes the direct expansion bitwise symmetric
-    # before iterative renormalization.
     sort!(terms; by=t -> (abs(t), t), rev=true)
     return Tuple(terms)
 end
@@ -127,3 +119,6 @@ fma7_safe(x::MultiFloat{Float64,7}, y::MultiFloat{Float64,7}, c::MultiFloat{Floa
     fma_safe(x, y, c)
 fma8_safe(x::MultiFloat{Float64,8}, y::MultiFloat{Float64,8}, c::MultiFloat{Float64,8}) =
     fma_safe(x, y, c)
+
+# M6 reciprocal candidate depends on the accepted x8 direct-FMA family above.
+include("inv8_safe.jl")
