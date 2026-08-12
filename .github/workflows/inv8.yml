@@ -1,0 +1,29 @@
+name: M6 inv8 diagnostics
+
+on:
+  pull_request:
+    paths:
+      - 'src/inv8_safe.jl'
+      - 'benchmark/inv8_safe.jl'
+      - 'test/inv8_safe.jl'
+      - 'src/fma_safe.jl'
+      - '.github/workflows/inv8.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inv8-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+      - uses: julia-actions/cache@v2
+      - name: Instantiate
+        run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Run x8 reciprocal one-vs-two correction diagnostic
+        run: julia --project=. benchmark/inv8_safe.jl
