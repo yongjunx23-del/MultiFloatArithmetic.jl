@@ -6,6 +6,8 @@
 # direct-FMA/multiplication/addition primitives. No BigFloat appears in the
 # candidate iteration.
 
+export inv8_safe
+
 const _Float64x4 = MultiFloat{Float64,4}
 const _Float64x8 = MultiFloat{Float64,8}
 
