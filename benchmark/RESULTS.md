@@ -61,38 +61,41 @@ x8 performance claim.
 See `docs/BIGFLOAT_MULTIFLOAT_COMPARISON.md` for full methodology and raw error
 figures.
 
-## Safe Float64x5 direct FMA — 2026-08-12 — Zen 3
+## Safe Float64x5-x8 direct FMA — 2026-08-12 — Zen 3
 
-Julia 1.10.11. `fma5_safe` is the first M5 correctness baseline. It forms and
-fully renormalizes one 55-component exact `x*y+c` expansion before five-limb
-truncation.
+The M5 family forms one direct exact `x*y+c` expansion before N-limb truncation.
+It had zero direct oracle, normalization, and x/y-symmetry failures at every
+width in the first accepted run.
 
-| Corpus | Cases | Direct oracle failures | Mul-then-add oracle failures | Max `|err|/(u^5(|xy|+|c|))` |
+### Direct-FMA error and composition mismatch
+
+| Width | Max observed `|err|/(u^N(|xy|+|c|))` | Ordinary mul-then-add mismatches | Scaled mismatches | Destructive-cancellation mismatches |
 |---|---:|---:|---:|---:|
-| dense ordinary | 200 | 0 | 45 | 0.0456757 |
-| scaled | 200 | 0 | 41 | 0.0492768 |
-| destructive cancellation | 150 | 0 | 150 | ~1.01e-67 |
+| x5 | 0.0492768 | 45 / 200 | 41 / 200 | **150 / 150** |
+| x6 | 0.0227603 | 8 / 50 | 14 / 50 | **48 / 48** |
+| x7 | 0.00452122 | 7 / 35 | 9 / 35 | **32 / 32** |
+| x8 | 0.000825581 | 6 / 25 | 6 / 25 | **24 / 24** |
 
-The direct path also had zero normalization and x/y-symmetry failures. Its
-maximum result-relative errors in these seeded corpora were of order `1e-81`.
-The cancellation row is particularly important: the five-limb rounded
-composition `add_safe(mul_safe(x,y),c)` disagreed with the exact direct-FMA
-oracle in **every tested cancellation case**, despite both component operations
-having their own exact-oracle baselines.
+`add_safe(mul_safe(x,y),c)` disagreed with the independent exact direct-FMA
+oracle in every tested destructive-cancellation case at every width. The direct
+path had zero oracle mismatches. This is the central M5 reason to preserve a
+true direct FMA for later residual/refinement/certificate work.
 
-Timing for 120 cases:
+CI uses C=1 for the operand-relative metric independently per width as an
+empirical regression gate, not a theorem.
 
-- direct 55-component safe FMA: **7.707 ms**;
-- safe `mul_safe` followed by `add_safe`: **6.231 ms**;
-- composition/direct = **0.809x**.
+### First safe-path timing A/B
 
-Thus the first direct baseline is about 24% slower than the already-slow safe
-composition. M5 currently values it for avoiding intermediate-rounding loss;
-performance optimization begins only after the direct x5-x8 family and formal
-error analysis exist.
+| Width | Direct safe FMA | Safe mul-then-add | Composition/direct |
+|---|---:|---:|---:|
+| x5 | 9.852 ms / 120 | 7.993 ms / 120 | 0.811x |
+| x6 | 3.044 ms / 20 | 2.550 ms / 20 | 0.837x |
+| x7 | 3.186 ms / 12 | 2.726 ms / 12 | 0.856x |
+| x8 | 2.625 ms / 6 | 2.314 ms / 6 | 0.882x |
 
-CI uses C=1 for the operand-relative direct-FMA metric as an empirical gate, not
-a theorem.
+Different case counts reflect the growing 55/78/105/136-component exact direct
+expansions and are not cross-width throughput comparisons. The direct path is
+currently slower; it is a correctness reference, not a hot kernel.
 
 ## Safe Float64x5-x8 multiplication — 2026-08-12 — Zen 3
 
@@ -128,12 +131,13 @@ cancellation defect.
 ## Interpretation
 
 - direct higher-limb FMA is numerically distinct from rounded mul-then-add;
-- cancellation demonstrates that distinction most strongly;
+- cancellation demonstrates that distinction at every x5-x8 width;
 - original MultiFloat x2/x4 has a large throughput advantage over the requested
   higher-precision BigFloat pairings in this hosted scalar batch;
-- current safe x8 add/mul is correctness-only and is not competitive with
-  BigFloat512, especially multiplication;
-- safe x5-x8 add/mul and x5 FMA are correctness baselines, not optimized APIs;
+- current safe x8 add/mul/FMA is correctness-only and is not a competitive hot
+  path, especially multiplication;
+- safe x5-x8 add/mul/FMA are oracle-matching baselines for future network
+  minimization, not optimized public APIs;
 - each width/operation keeps a separate empirical error metric;
 - formal tail analysis precedes fixed-cost minimization;
 - deployment CPU and downstream solver A/B remain required for performance
