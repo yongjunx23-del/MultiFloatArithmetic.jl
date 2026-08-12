@@ -95,5 +95,6 @@ end
 # Load the generic x5-x8 direct-FMA family after freezing the x5 wrapper above.
 include("fma_safe.jl")
 
-# M6 reciprocal uses the accepted direct x5 FMA for its Newton correction.
+# M6 reciprocal and division use direct x5 FMA for correction steps.
 include("recip5_safe.jl")
+include("div5_safe.jl")
