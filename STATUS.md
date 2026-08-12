@@ -1,86 +1,105 @@
 # Project status
 
 Status date: **2026-08-12**
-Current milestone: **M1.1 — x2/x3 structural verification and x4 decomposition**
+Current milestone: **M1.1 — x2/x3 structural verification and x4 correctness hardening**
 
 ## Executive assessment
 
-The repository is now a reviewable v0.1 research package rather than a loose
-prototype: the public/experimental API boundary is explicit, conventional Julia
-CI is cross-platform and bounds-checked, negative performance results are
-recorded, and source-mirrored formal-verification assets exist. It is still not
-a production arithmetic library because the empirical error constants are not
-machine-proved, x4 structural verification is unresolved, and the x5-x8 and
-linear-algebra roadmap remains unimplemented.
+The repository is now a reviewable v0.1 research package with an explicit
+public/experimental API boundary, cross-platform bounds-checked CI, adversarial
+BigFloat differential tests, SIMD lane-equivalence tests, benchmark records, and
+pinned FPANVerifier assets.
 
-A practical milestone assessment is:
+It is **not** a production arithmetic library yet. The current state is:
 
-- M0/M1 engineering, API freeze, and empirical validation: substantially
-  complete;
-- x2 structural proof: complete at the pinned verifier/toolchain;
-- x3 structural proof: complete after the proof-driven final normalization
+- x2 FMA structural proof: complete at the pinned verifier/toolchain;
+- x3 FMA structural proof: complete after the proof-driven final-normalization
   repair;
-- x4 structural proof: unresolved because the universal model exceeds the
-  hosted-runner budget, with no refutation observed;
-- formal proof of `C_2`, `C_3`, and `C_4`: pending;
-- M2-M6 higher-limb arithmetic: not started;
-- M7 MultiFloat-native linear algebra: not started.
+- x4 FMA: original fixed-cost end network has a confirmed cancellation bug;
+  a conservative `renormalize` baseline now removes the invalid FastTwoSum
+  assumptions and passes the empirical correctness suite;
+- formal proof of the empirical constants `C_2`, `C_3`, and `C_4`: pending;
+- x5-x8 arithmetic: not implemented;
+- MultiFloat-native DOT/SYRK/TRSM/GEMM backend: not implemented.
 
-## Formal finding and repair
+## x4 finding
 
-The original x3 end network proved `z1 strongly_dominates z2` but FPANVerifier
-refuted `z0 strongly_dominates z1` in an abstract precision-11 model. Randomized
-Julia tests did not expose a concrete non-normalized output, so the model was
-treated as a structural gap rather than presented as a concrete IEEE input.
+The original x4 final compression began with
+`fast_two_sum(b, a1)`. FPAN decomposition refuted the required magnitude
+ordering under cancellation. A concrete Float64 diagnostic then made the issue
+observable in ordinary Julia execution.
 
-A minimal A/B compared three fixed-cost repairs. A single final `two_sum(z0,
-z1)` was insufficient because the resulting tail relation was refuted. Adding
-`fast_two_sum(z1, z2)` after that operation proved both final relations. A full
-fixed renormalization pass also proved them but uses a more general operation on
-the tail. The selected repair is therefore the two-operation candidate.
+For 10,000 seeded cases with `c` chosen as the x4 representation of `-x*y`:
+
+- first-FastTwoSum ordering violations: **3,755 / 10,000**;
+- old x4 non-normalized outputs: **5,258 / 10,000**;
+- old output differed from the safe baseline: **5,258 / 10,000**;
+- safe-baseline non-normalized outputs: **0 / 10,000**.
+
+On 20,000 ordinary random values the old and safe x4 outputs were bitwise
+identical, which explains why the earlier broad randomized suite did not expose
+the cancellation defect.
+
+## Current x4 baseline
+
+The correctness-first x4 path now:
+
+1. uses general `two_sum` instead of the two risky final-compression
+   `fast_two_sum` operations;
+2. finishes with `MultiFloats.renormalize`;
+3. preserves the existing x4 product/accumulation network before final
+   compression.
+
+This intentionally gives up the package's fixed-cost branch-free property for
+x4 until a source-specific fixed-cost compression is proved. Brute-force
+assumption-free fixed-tail A/B candidates were rejected: at p=24 and p=53 they
+still failed the top two non-overlap obligations.
+
+## Performance snapshot
+
+GitHub-hosted runner, Julia 1.10.11, `Sys.CPU_NAME = generic`:
+
+| Workload | Old x4 | Safe x4 | Relative result |
+|---|---:|---:|---:|
+| scalar, 20k | 0.062 ms | 0.345 ms | safe/old 5.593x |
+| Vec2, 20k lanes | 0.155 ms | 0.211 ms | safe/old 1.364x |
+| Vec4, 20k lanes | 0.080 ms | 0.109 ms | safe/old 1.352x |
+| Vec8, 20k lanes | 0.064 ms | 0.068 ms | safe/old 1.056x |
+
+Against upstream `x*y+c`, the safe x4 SIMD smoke still measured about **1.59x
+(Vec2), 1.59x (Vec4), and 1.31x (Vec8)** on this runner. Scalar x4 is not a
+performance candidate.
 
 ## Kernel decisions
 
-Two informational CI measurements are recorded: run 21 used an Ice Lake runner,
-while PR run 24 used a Zen 3 runner. The runner change demonstrates that these
-timings are architecture-sensitive rather than portable guarantees. Full output
-is preserved in [benchmark/RESULTS.md](benchmark/RESULTS.md).
-
-| Component | Ice Lake evidence | Zen 3 evidence | Decision |
-|---|---:|---:|---|
-| Float64x2 scalar `fma_fast` | 1.087x | 1.020x | marginal top-level opt-in candidate; no auto-selection |
-| Float64x3 scalar `fma_fast` | 0.831x | 0.488x | keep opt-in; scalar regression; repair overhead measured separately |
-| Float64x4 scalar `fma_fast` | 0.900x | 0.510x | keep opt-in; scalar regression |
-| Vec2/Vec4/Vec8 `fma_fast` | 1.033x-2.017x | 0.942x-2.537x | main optimization path, but architecture/width gated |
-| specialized expansion × one-limb multiply | 0.981x-1.042x versus full product | 1.007x-1.096x | near-parity experimental helper only |
-| quotient-digit division | upstream faster in all six cases | scalar loses badly; Vec4 mixed, including one x3 win | rejected as default; retain for reproducibility |
-| Float64x5-Float64x8 arithmetic | none | none | not implemented |
-| DOT/SYRK/TRSM/GEMM backend | none | none | not implemented |
-
-For FMA, values above one favor `fma_fast`. For the specialized one-limb
-product, values above one favor the specialized product over the zero-padded
-full product. Quotient-division evidence is summarized rather than collapsed
-into one ratio because its winner changes by width and architecture.
+| Component | Decision |
+|---|---|
+| x2 scalar `fma_fast` | marginal architecture-dependent opt-in candidate |
+| x3 scalar `fma_fast` | correctness-verified but slower; do not auto-select |
+| x2/x3 SIMD `fma_fast` | continue architecture-specific optimization path |
+| x4 scalar `fma_fast` | correctness baseline only; upstream is faster |
+| x4 SIMD `fma_fast` | safe baseline retains useful speedup; fixed-cost repair still research |
+| quotient-digit division | rejected as default; retain under `Experimental` |
+| expansion × one-limb multiply | experimental helper only |
+| x5-x8 | not implemented |
+| native linear algebra backend | not implemented |
 
 ## Acceptance gates
 
 A kernel may be described as fully verified only when all applicable gates pass:
 
-1. **Domain and semantics:** finite-input domain, rounding mode, underflow
-   assumptions, normalization invariant, and error metric are explicit.
-2. **Deterministic correctness:** permanent adversarial cases, seeded randomized
-   tests, BigFloat/MPFR differential checks, and SIMD lane equivalence pass.
-3. **Verification:** non-overlap and discarded-tail/error bounds have a
-   reviewable proof or machine-verifier artifact.
-4. **Code generation:** no hidden calls, accidental reassociation, or unexpected
-   stack/register explosion on supported targets.
-5. **Performance:** repeated architecture-specific measurements show a stable
-   benefit for the intended scalar or vector workload.
-6. **Downstream value:** an end-to-end solver A/B improves time or memory without
-   degrading iterations, residuals, or certificates.
+1. domain, rounding, underflow, normalization, and error metric are explicit;
+2. deterministic/adversarial tests and BigFloat differential checks pass;
+3. structural non-overlap and FastTwoSum preconditions are proved or avoided;
+4. discarded-tail/error constants have reviewable proof evidence;
+5. code generation is inspected on supported targets;
+6. performance benefit is repeatable on the intended architecture/workload;
+7. downstream solver A/B improves time or memory without degrading residuals or
+   certificates.
 
 ## Immediate next milestone
 
-Finish **M1.1** by decomposing or fixed-precision validating the x4 network and
-by deriving machine-checkable error constants for x2/x3. Only after those tasks
-should the project start a correctness-first x5 reference implementation.
+Finish M1.1 by making the x4 safe baseline part of the frozen source contract,
+then derive machine-checkable error bounds for x2/x3 and a source-specific x4
+compression proof. Do **not** start x5 optimization by copying the old x4
+FastTwoSum assumptions.

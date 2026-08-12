@@ -2,17 +2,19 @@
 
 ## Unreleased
 
-- Freeze the top-level research API around `fma_fast`.
-- Move quotient-digit division and one-limb multiplication into the explicit
-  `MultiFloatArithmetic.Experimental` namespace.
-- Record the mixed, architecture-dependent division A/B evidence instead of
-  presenting the candidate as a general optimization.
-- Add the numerical contract, milestone status, two-architecture benchmark
-  record, API-boundary tests, binary32 smoke coverage, exact-identity checks,
-  bounds-checked CI, and a macOS correctness job.
+- Freeze the top-level research API around `fma_fast` and move rejected
+  quotient-digit division / one-limb multiplication into
+  `MultiFloatArithmetic.Experimental`.
+- Add the numerical contract, milestone status, architecture-dependent benchmark
+  records, API-boundary tests, binary32 smoke coverage, exact-identity checks,
+  bounds-checked Linux/macOS CI, and code-generation diagnostics.
 - Add pinned FPANVerifier/Z3 structural-proof assets for the x2-x4 source
   networks.
-- Repair the x3 final normalization with the minimal proved TwoSum/FastTwoSum
-  pair after the original leading non-overlap obligation was refuted.
-- Add an old-versus-repaired x3 scalar/SIMD benchmark so the proof repair's fixed
-  cost remains visible.
+- Repair x3 final normalization with the minimal proved TwoSum/FastTwoSum pair.
+- Identify a cancellation-invalid first FastTwoSum in the original x4 end
+  network and reproduce the problem on concrete Float64 inputs.
+- Add the correctness-first x4 baseline: general TwoSum final compression plus
+  `MultiFloats.renormalize`.
+- Add an old-versus-safe x4 scalar/SIMD benchmark and exact-cancellation
+  diagnostic. In the seeded 10k cancellation corpus the old path produced 5,258
+  non-normalized results while the safe baseline produced none.
