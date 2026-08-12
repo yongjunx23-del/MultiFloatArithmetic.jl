@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'verification/**'
+      - 'audit/**'
       - 'src/MultiFloatArithmetic.jl'
       - '.github/workflows/fpan.yml'
   push:
     branches: [main]
     paths:
       - 'verification/**'
+      - 'audit/**'
       - 'src/MultiFloatArithmetic.jl'
       - '.github/workflows/fpan.yml'
   workflow_dispatch:
@@ -66,5 +68,61 @@ jobs:
         with:
           name: fpan-${{ matrix.spec }}-log
           path: fpan-${{ matrix.spec }}.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  audit-paper-qw:
+    name: arXiv 2607.11391v1 QW proof contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out pinned FPANVerifier
+        uses: actions/checkout@v4
+        with:
+          repository: dzhang314/FPANVerifier
+          ref: 0a1314fa78aeab35793b7354eb097061380982e5
+          path: .verification-tools/FPANVerifier
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned Python Z3 and command adapter
+        run: |
+          python -m pip install --disable-pip-version-check z3-solver==4.13.4.0
+          mkdir -p .verification-tools/bin
+          cat > .verification-tools/bin/z3 <<'SH'
+          #!/usr/bin/env bash
+          exec python "$GITHUB_WORKSPACE/verification/z3_cli.py" "$@"
+          SH
+          chmod +x .verification-tools/bin/z3
+          echo "$GITHUB_WORKSPACE/.verification-tools/bin" >> "$GITHUB_PATH"
+      - name: Reproduce QW FastTwoSum validity and non-overlap caveat
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$GITHUB_WORKSPACE/.verification-tools/bin:$PATH"
+          timeout --signal=TERM --kill-after=15s 1500s \
+            python3 -u .verification-tools/FPANVerifier/verify_fpan.py \
+            --show-counterexamples \
+            verification/paper2607_qw_v1.fpan \
+            > fpan-paper2607-qw-v1.log 2>&1
+          cat fpan-paper2607-qw-v1.log
+
+          # Algorithm 3 has two FastTwoSum gates and the paper states both are
+          # universally valid under FPANVerifier's exponent-order condition.
+          ! grep -q 'fast_two_sum command.*invalid' fpan-paper2607-qw-v1.log
+
+          # Sec. 2.9.5 explicitly reports one known representational caveat:
+          # even weak leading s_dominates is refuted after extreme cancellation.
+          test "$(grep -c '^ERROR:' fpan-paper2607-qw-v1.log)" -eq 1
+          grep -E '^ERROR: p00 s_dominates p01.*REFUTED' fpan-paper2607-qw-v1.log
+          grep -E '^p02 strongly_dominates e02.*proved by' fpan-paper2607-qw-v1.log
+      - name: Upload QW audit log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fpan-paper2607-qw-v1-log
+          path: fpan-paper2607-qw-v1.log
           if-no-files-found: warn
           retention-days: 30
