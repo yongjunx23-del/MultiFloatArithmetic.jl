@@ -1,4 +1,4 @@
-@testset "specialized expansion × one-limb multiplication" begin
+@testset "experimental expansion × one-limb multiplication" begin
     Random.seed!(0x51a1_2026)
 
     for (T, limbs, _) in CASES
@@ -9,7 +9,7 @@
 
                 qexp = ntuple(i -> isone(i) ? q : zero(q), limbs)
                 reference = MultiFloats.mfmul(x._limbs, qexp, Val(limbs))
-                candidate = mul_scalar_limbs(x._limbs, q, Val(limbs))
+                candidate = ExperimentalArithmetic.mul_scalar_limbs(x._limbs, q, Val(limbs))
 
                 @test candidate === reference
             end
@@ -29,7 +29,7 @@
                 qexp = ntuple(i -> isone(i) ? qv : zero(qv), limbs)
 
                 reference = MultiFloats.mfmul(vx._limbs, qexp, Val(limbs))
-                candidate = mul_scalar_limbs(vx._limbs, qv, Val(limbs))
+                candidate = ExperimentalArithmetic.mul_scalar_limbs(vx._limbs, qv, Val(limbs))
 
                 @test candidate === reference
             end

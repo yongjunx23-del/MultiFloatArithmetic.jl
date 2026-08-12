@@ -1,14 +1,20 @@
-# Research candidate: quotient-digit division.
+# Rejected default candidate: quotient-digit division.
 #
 # The outer algorithm extracts one base-limb quotient digit at a time. Residual
 # products use the specialized expansion × one-limb network in mul_scalar.jl;
-# residual subtraction itself still uses MultiFloats v3's mfadd network. This
-# keeps the strong-cancellation part on an existing upstream arithmetic path
-# while removing the wasteful zero-padded N×N multiplication.
+# residual subtraction still uses MultiFloats v3's mfadd network. The candidate
+# is retained only to reproduce the correctness and performance study. Two
+# hosted-runner A/Bs showed a consistently much slower scalar path and
+# architecture-dependent Vec4 results. One Zen 3 x3 Vec4 case won, but the
+# candidate did not establish a stable enough benefit to replace upstream `/`.
 
-@inline _one_limb_expansion(q::T, ::Val{N}) where {T,N} =
-    ntuple(i -> isone(i) ? q : zero(T), Val{N}())
+"""
+    div_digits_limbs(x, y, Val(N))
 
+Experimental quotient-digit division for normalized 2-, 3-, or 4-limb tuples.
+The divisor must be finite and nonzero. This function is retained for research
+reproducibility and is not an accepted replacement for upstream division.
+"""
 @inline function div_digits_limbs(
     x::NTuple{N,T},
     y::NTuple{N,T},
@@ -31,6 +37,12 @@
     return renormalize(digits)
 end
 
+"""
+    div_digits(x, y)
+
+Experimental scalar or lane-wise wrapper for [`div_digits_limbs`](@ref).
+Use ordinary `x / y` for accepted package behavior.
+"""
 @inline function div_digits(
     x::MultiFloat{T,N},
     y::MultiFloat{T,N},

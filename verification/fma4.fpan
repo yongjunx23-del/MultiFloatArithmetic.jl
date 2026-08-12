@@ -1,0 +1,11 @@
+# HISTORICAL REJECTED MODEL — NOT RUN BY CI
+#
+# This file used to mirror the original fixed-cost x4 final compression. The
+# decomposition performed in diagnostic PR #10 refuted the magnitude ordering
+# required by its first `fast_two_sum(b, a1)` under destructive cancellation.
+# Concrete Float64 diagnostics then found non-normalized old outputs.
+#
+# The accepted x4 source no longer uses this fixed-cost normalization network;
+# it uses general TwoSum transforms followed by `MultiFloats.renormalize`.
+# Retain this marker so future work does not accidentally restore the rejected
+# assumption. See STATUS.md, docs/NUMERICAL_CONTRACT.md, and closed PR #10.

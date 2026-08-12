@@ -1,4 +1,4 @@
-@testset "quotient-digit division research candidate" begin
+@testset "experimental quotient-digit division candidate" begin
     Random.seed!(0xd1a1_2026)
     setprecision(BigFloat, 1024) do
         for (T, limbs, _) in CASES
@@ -14,7 +14,7 @@
                     x = T(ldexp(rand(Bool) ? mx : -mx, ex))
                     y = T(ldexp(rand(Bool) ? my : -my, ey))
 
-                    z = div_digits(x, y)
+                    z = ExperimentalArithmetic.div_digits(x, y)
                     reference = big(x) / big(y)
                     relative_error = abs(big(z) - reference) / abs(reference)
 
@@ -38,9 +38,9 @@
                         T(ldexp(rand(Bool) ? m : -m, e))
                     end
 
-                    vz = div_digits(V(xs), V(ys))
+                    vz = ExperimentalArithmetic.div_digits(V(xs), V(ys))
                     for lane in 1:4
-                        scalar = div_digits(xs[lane], ys[lane])
+                        scalar = ExperimentalArithmetic.div_digits(xs[lane], ys[lane])
                         @test vz[lane] === scalar
                         reference = big(xs[lane]) / big(ys[lane])
                         relative_error = abs(big(scalar) - reference) / abs(reference)
