@@ -80,13 +80,25 @@ function _inv8_direct_two_corrections(x::_Float64x8_inv8)
     return y2
 end
 
+# Diagnostic only until the A/B proves it is required. If y3 is bitwise equal to
+# y2 in cases where y2 still differs from reference_inv, target-width Newton has
+# reached a fixed point and more same-width corrections cannot select the correct
+# neighboring x8 rounding.
+function _inv8_direct_three_corrections(x::_Float64x8_inv8)
+    y0 = _inv8_seed_x4(x)
+    y1, _ = _inv8_newton_once(x, y0)
+    y2, _ = _inv8_newton_once(x, y1)
+    y3, _ = _inv8_newton_once(x, y2)
+    return y3
+end
+
 """
     inv8_safe(x)
 
-Correctness-first Float64x8 reciprocal baseline. It uses a trusted upstream
-Float64x4 reciprocal seed and two direct-x8-FMA Newton corrections. CI retains a
-one-correction A/B and may reduce this to one correction only if that path is
-bitwise identical to the independent adaptive `reference_inv` oracle.
+Correctness-first Float64x8 reciprocal experiment. The public candidate remains
+the two-correction path while CI compares one, two, and three direct-FMA Newton
+corrections against the adaptive `reference_inv` oracle. It must not be promoted
+until bitwise oracle agreement is established.
 """
 function inv8_safe(x::_Float64x8_inv8)
     return _inv8_direct_two_corrections(x)
