@@ -26,75 +26,99 @@ full renormalization before N-limb truncation. First empirical constants in
 components, canonicalizing their order, fully renormalizing, then truncating.
 First empirical relative constants are ~0.04841, 0.01837, 0.00726, and 0.00254.
 
-## M5 direct FMA — Float64x5 safe baseline accepted
+The x8 construction preserves/sorts/renormalizes 128 components. It is a
+correctness reference, not a performance design: the first requested comparison
+measured it roughly 3,600x slower than BigFloat512 multiplication on the hosted
+Zen 3 runner.
 
-`Experimental.fma5_safe` deliberately does not call the rounded N-limb
-multiplication result. It combines:
+## M5 direct FMA — safe x5-x8 family complete baseline
 
-- all 50 exact x5 product/residual components from the 25 TwoProd pairs;
-- all five exact limbs of `c`;
+`Experimental.fma_safe` deliberately does not call the rounded N-limb
+multiplication result. For width N it combines:
+
+- all `2N^2` exact product/residual components from the M4 TwoProd decomposition;
+- all N exact limbs of `c`;
 - deterministic canonical ordering;
-- one full renormalization of the resulting 55 components;
-- five-limb truncation only after the exact `x*y+c` expansion exists.
+- one full renormalization of the resulting direct expansion;
+- N-limb truncation only after the exact `x*y+c` expansion exists.
 
-Permanent gates require exact TwoProd reconstruction, exact 55-term head+tail
+Full component counts are 55, 78, 105, and 136 for x5-x8.
+
+Permanent gates require exact TwoProd reconstruction, exact direct-FMA head+tail
 accounting, normalized full/output expansions, `reference_fma` equality, x/y
-symmetry, identities, dense/scaled cases, powers of two, and deep destructive
-cancellation.
+symmetry, generic/wrapper equality, identities, dense/scaled cases, powers of
+two, and deep destructive cancellation.
 
-First direct-FMA empirical max `|err|/(u^5(|xy|+|c|))` values were ~0.04568
-ordinary and ~0.04928 scaled, with zero direct oracle/normalization/symmetry
-failures.
+First maximum direct-FMA `|err|/(u^N(|xy|+|c|))` values over the ordinary/scaled
+seeded corpora:
 
-### Why direct FMA is now mandatory research, not optional syntax
+- x5: ~0.0492768
+- x6: ~0.0227603
+- x7: ~0.00452122
+- x8: ~0.000825581
+
+All widths had zero direct oracle, normalization, and x/y-symmetry failures.
+
+### Why direct FMA is mandatory for later residual/refinement work
 
 The rounded composition `add_safe(mul_safe(x,y),c)` disagreed with the exact
-`reference_fma` oracle in:
+`reference_fma` oracle in every destructive-cancellation case tested:
 
-- 45 / 200 ordinary cases;
-- 41 / 200 scaled cases;
-- 150 / 150 destructive-cancellation cases.
+- x5: 150 / 150
+- x6: 48 / 48
+- x7: 32 / 32
+- x8: 24 / 24
 
 The direct path had zero oracle mismatches. Therefore separately correct add/mul
 baselines are not a substitute for direct FMA in cancellation-sensitive residual,
-refinement, or certificate work.
+refinement, stopping-criterion, or certificate code.
 
-The initial direct correctness path is ~24% slower than the safe composition on
-the first Zen 3 timing sample; this is acceptable at the baseline stage.
+The safe direct path remains slower than safe composition. First
+composition/direct timing ratios were 0.811x, 0.837x, 0.856x, and 0.882x for
+x5-x8. This is acceptable only because M5 is a rejection/reference baseline.
 
-### M5 next
+## Post-M5 fixed-cost research track
 
-Generalize to one safe direct-FMA family for Float64 x5-x8. Width N should combine
-all `2N^2` product/residual components with N addend limbs, producing:
+Now that the safe families exist, fixed-cost search can proceed without losing a
+correctness reference. The priority order is:
 
-- x5: 55 components;
-- x6: 78 components;
-- x7: 105 components;
-- x8: 136 components.
+1. derive reviewable tail/error bounds for the safe add/mul/direct-FMA families;
+2. reduce x8 multiplication first because it is the dominant measured
+   performance failure versus BigFloat512;
+3. search diagonal/staged product networks that retain exact-accounting hooks;
+4. prove every proposed FastTwoSum ordering from source-specific bounds;
+5. compare each minimized network bitwise against the safe/reference oracles on
+   the permanent adversarial corpus;
+6. only then introduce SIMD/MultiFloatVec variants and codegen gates.
 
-For x6-x8 independently require:
+A fixed-cost candidate is rejected immediately if it loses normalization,
+oracle equality, required symmetry, cancellation behavior, or its stated error
+bound, regardless of instruction count.
 
-- exact pairwise TwoProd reconstruction;
-- exact direct FMA head+tail accounting;
-- bitwise `reference_fma` equality;
-- x/y symmetry and normalized output;
-- destructive-cancellation coverage;
-- separate empirical `u^N(|xy|+|c|)` constants;
-- direct-vs-rounded-composition mismatch telemetry;
-- explicit inherited underflow/overflow domain.
+## M6 — reciprocal/division/sqrt correctness baseline next
 
-Acceptance sequence:
+Start with Float64x5 reciprocal and division before generalizing widths.
+Non-dyadic results require a separate reference strategy from M2's exact dyadic
+arithmetic:
 
-`fma5_safe -> safe fma6/fma7/fma8 -> formal direct-FMA tail analysis -> fixed-cost fused search`.
+- convert the exact Rational input to a high-guard-precision MPFR computation;
+- round once into the target MultiFloat width;
+- independently cross-check the pack/result at much higher MPFR precision so the
+  candidate is not tested against itself;
+- make zero/sign/overflow/subnormal/underflow semantics explicit.
 
-Do not use the existing x2-x4 `fma_fast` networks as templates for x5-x8 fixed-
-cost structure before the safe direct family is complete.
+For the arithmetic candidate, use precision-doubling/Newton correction only after
+the reference oracle is frozen. Direct FMA/submul residuals should be preferred
+where they avoid the intermediate-rounding loss already demonstrated in M5.
+Performance is not an M6 acceptance criterion while the safe x5-x8 mul/FMA paths
+remain intentionally slow.
 
-## M6-M7 direction
+## M7 — native linear algebra after competitive arithmetic survivors
 
-- M6: reciprocal/division/sqrt via precision doubling, with direct FMA/submul for
-  residual corrections where it materially improves error propagation.
-- M7: MultiFloatVec-native DOT/SYRK/GEMM, then TRSM/Cholesky and downstream solver
-  A/B on iterations, residuals, certificates, time, and memory.
+Build MultiFloatVec-native DOT/SYRK/GEMM, then TRSM/Cholesky/factor-solve-refine
+only after the high-limb arithmetic hot paths are competitive enough that matrix
+benchmarks are meaningful. Final acceptance requires downstream solver A/B on
+iterations, residuals, certificates, wall time, and memory rather than isolated
+microbenchmarks alone.
 
 Every discovered counterexample becomes a permanent regression test.

@@ -40,7 +40,7 @@ jobs:
   smoke-benchmark:
     name: Arithmetic smoke and codegen
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
@@ -67,6 +67,8 @@ jobs:
         run: julia --project=. benchmark/mul6_mul8_safe.jl
       - name: Measure Float64x5 direct-FMA discarded tail
         run: julia --project=. benchmark/fma5_safe.jl
+      - name: Measure Float64x6-x8 direct-FMA discarded tails
+        run: julia --project=. benchmark/fma6_fma8_safe.jl
       - name: Compare BigFloat and MultiFloat precision/speed
         run: julia --project=. benchmark/bigfloat_multifloat_comparison.jl
       - name: Run rejected quotient-digit division A/B
