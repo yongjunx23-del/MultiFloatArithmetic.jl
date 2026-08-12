@@ -97,3 +97,5 @@
         @test_throws DomainError recip5(huge)
     end
 end
+
+include("div5_safe.jl")
