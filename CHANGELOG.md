@@ -12,26 +12,24 @@
   replace it with the correctness-first TwoSum + `renormalize` baseline.
 - Add exact-rational x5-x8 Experimental reference add/sub/mul/FMA and independent
   8192-bit packing checks.
-- Add the M3 Float64x5 safe addition baseline with exact tail accounting and an
-  empirical C=1 regression gate.
-- Generalize the same no-FastTwoSum safe addition construction through x8 using
-  one `add_safe` implementation plus width-specific add5-add8 wrappers.
-- Add cross-platform x6-x8 oracle/normalization/commutativity/cancellation/
-  power-boundary tests and independent width-specific tail diagnostics.
-- Record first maximum observed addition constants: ~0.05283 (x5), ~0.02548
-  (x6), ~0.01099 (x7), and ~0.00542 (x8), all below the empirical C=1 gate.
-- Record first safe-add scalar timings for 5,000 operations: 0.454 ms (x5),
-  0.545 ms (x6), 0.710 ms (x7), 1.438 ms (x8) on the cited Zen 3 runner.
-- Start M4 with `Experimental.mul5_safe`, an over-complete Float64x5
-  multiplication baseline that preserves all 25 TwoProd products and residuals,
-  canonicalizes 50 finite terms, fully renormalizes, and truncates only after the
-  exact product expansion is formed.
-- Add pair-by-pair exact TwoProd reconstruction, exact five-limb head + 45-limb
-  tail accounting, bitwise `reference_mul` equality, commutativity, sign,
-  power-of-two, boundary, overflow, and underflow-domain tests for `mul5_safe`.
-- Add an empirical C=1 relative multiplication gate. The first diagnostic found
-  zero oracle/normalization/commutativity failures and a maximum observed
-  `|err|/(u^5|x*y|)` of ~0.04841.
-- Record the first safe-mul timing: 33.557 ms for 500 Float64x5 scalar products
-  on the cited Zen 3 runner; this deliberately slow path remains a correctness
-  baseline rather than a performance candidate.
+- Complete M3 with one no-FastTwoSum `add_safe` implementation for Float64x5-x8,
+  exact tail/oracle/commutativity gates, and width-specific empirical C=1 gates.
+- Record first maximum safe-add constants: ~0.05283 (x5), ~0.02548 (x6),
+  ~0.01099 (x7), and ~0.00542 (x8).
+- Start M4 with `mul5_safe`, preserving every TwoProd product/residual and
+  requiring pair-level exact reconstruction plus exact full-product tail
+  accounting.
+- Generalize multiplication to one `mul_safe` implementation for Float64x5-x8.
+  Width N keeps all `2N^2` product/residual components, canonicalizes operand
+  order, fully renormalizes, and truncates only after the exact product expansion
+  is formed.
+- Add x6-x8 pairwise TwoProd exactness, exact head+tail reconstruction,
+  `reference_mul` equality, normalization, commutativity, dense/scaled/boundary
+  tests, and separate empirical relative-error gates.
+- Record first maximum `|err|/(u^N|x*y|)` values: ~0.04841 (x5), ~0.01837 (x6),
+  ~0.00726 (x7), and ~0.00254 (x8); all measured diagnostics had zero
+  oracle/normalization/commutativity failures.
+- Record first safe-mul timing snapshots on Zen 3: 32.84 ms/500 (x5),
+  5.059 ms/40 (x6), 5.710 ms/25 (x7), and 4.492 ms/12 (x8). Different case
+  counts reflect rapidly growing `2N^2` exact-expansion cost; these are not
+  performance targets.
