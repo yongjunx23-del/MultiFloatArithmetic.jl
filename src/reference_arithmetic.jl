@@ -17,11 +17,6 @@
 end
 
 @inline function _reference_precision(::Type{T}, ::Val{N}) where {T,N}
-    # `span` is the number of binary places from the largest finite exponent to
-    # the smallest subnormal bit (inclusive). A product can approximately
-    # double that span. The N-dependent and fixed margins cover carry growth and
-    # the final rational-to-BigFloat conversion without relying on ambient MPFR
-    # precision.
     span = exponent(floatmax(T)) - exponent(floatmin(T)) + precision(T)
     return 2 * span + 2 * ndigits(N; base=2) + 32
 end
@@ -44,21 +39,10 @@ function _pack_exact(
     _check_reference_format(T, Val{N}())
     p = _reference_precision(T, Val{N}())
     return setprecision(BigFloat, p) do
-        # All values entering this package are dyadic rationals. At the chosen
-        # precision this conversion is exact for the x5-x8 Float32/Float64
-        # domain; the test suite cross-checks it against a much larger MPFR
-        # precision before this function is accepted as an oracle.
         MultiFloat{T,N}(BigFloat(value))
     end
 end
 
-"""
-    reference_add(x, y)
-
-Exact-rational reference addition for 5- through 8-limb Float32/Float64
-`MultiFloat` values. This operation is intentionally allocation-heavy and must
-not be used as a performance baseline.
-"""
 function reference_add(
     x::MultiFloat{T,N},
     y::MultiFloat{T,N},
@@ -68,11 +52,6 @@ function reference_add(
     return _pack_exact(MultiFloat{T,N}, _exact_value(x) + _exact_value(y))
 end
 
-"""
-    reference_sub(x, y)
-
-Exact-rational reference subtraction for the x5-x8 research domain.
-"""
 function reference_sub(
     x::MultiFloat{T,N},
     y::MultiFloat{T,N},
@@ -82,11 +61,6 @@ function reference_sub(
     return _pack_exact(MultiFloat{T,N}, _exact_value(x) - _exact_value(y))
 end
 
-"""
-    reference_mul(x, y)
-
-Exact-rational reference multiplication for the x5-x8 research domain.
-"""
 function reference_mul(
     x::MultiFloat{T,N},
     y::MultiFloat{T,N},
@@ -96,13 +70,6 @@ function reference_mul(
     return _pack_exact(MultiFloat{T,N}, _exact_value(x) * _exact_value(y))
 end
 
-"""
-    reference_fma(x, y, c)
-
-Compute the exact dyadic value `x*y + c`, then pack it once into an N-limb
-MultiFloat expansion. This is the primary correctness oracle for future x5-x8
-direct FMA research.
-"""
 function reference_fma(
     x::MultiFloat{T,N},
     y::MultiFloat{T,N},
@@ -115,9 +82,6 @@ function reference_fma(
     return _pack_exact(MultiFloat{T,N}, exact)
 end
 
-# Lane-wise vector wrappers. These are intentionally defined through scalar
-# extraction so the SIMD research code has an independent oracle rather than a
-# second vectorized arithmetic network with shared failure modes.
 function reference_add(
     x::MultiFloatVec{W,T,N},
     y::MultiFloatVec{W,T,N},
@@ -150,3 +114,7 @@ function reference_fma(
     scalars = ntuple(i -> reference_fma(x[i], y[i], c[i]), Val{W}())
     return MultiFloatVec{W,T,N}(scalars)
 end
+
+# M6 non-dyadic / irrational correctness oracles are loaded here so they share
+# the exact input/domain helpers above but remain isolated from hot arithmetic.
+include("reference_inverse_div_sqrt.jl")
