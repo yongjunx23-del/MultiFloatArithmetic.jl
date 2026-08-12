@@ -1,8 +1,10 @@
 # FPAN verification
 
-This directory mirrors the arithmetic networks in
-`src/MultiFloatArithmetic.jl` using the `.fpan` language from
-[`dzhang314/FPANVerifier`](https://github.com/dzhang314/FPANVerifier).
+This directory contains the machine-checkable structural models for the
+**fixed-cost x2 and x3** `fma_fast` networks in `src/MultiFloatArithmetic.jl`.
+The accepted x4 path is intentionally different: it ends in upstream
+`MultiFloats.renormalize`, so x4 normalization is not represented as a fixed
+FPAN network.
 
 ## Pinned verifier
 
@@ -13,74 +15,63 @@ change from silently changing this repository's proof status.
 
 FPANVerifier expects both Python Z3 bindings and a `z3` executable. CI supplies
 the executable through `verification/z3_cli.py`, a minimal adapter that solves
-the generated SMT-LIB files with the same pinned Python Z3 package. This avoids
-runner-specific APT repositories and eliminates Python/executable version drift.
+the generated SMT-LIB files with the same pinned Python Z3 package.
 
-The upstream verifier currently warns that its SELTZO lemma system is being
-redesigned and that precise error-bound/non-overlap proving strength may
-temporarily regress. A failed proof at this pin is therefore evidence that the
-current tool did not establish the claim; it is not automatically a concrete
-floating-point counterexample.
+The upstream verifier warns that its SELTZO lemma system is under redesign. A
+failed proof at this pin is evidence that the current model did not establish a
+claim; it is not automatically a concrete IEEE counterexample.
 
-## What is modeled
+## x2
 
-- normalized x, y, and c input expansions;
-- every `two_prod` used by the Julia kernels;
-- every rounded one-product term, represented by `two_prod` with its exact
-  residual deliberately left unused;
-- every rounded `+`, represented by `two_sum` with the error output deliberately
-  left unused;
-- every explicit `two_sum` and `fast_two_sum` in source order.
+`fma2.fpan` mirrors the x2 source network and proves the explicit FastTwoSum
+magnitude precondition plus the final output non-overlap relation.
 
-Using `two_sum` to model a plain addition is exact for the retained first output:
-it is the same rounded sum computed by Julia, while the second output only makes
-the discarded rounding residual available to the verifier.
+## x3
 
-## Current result
+The original x3 end network had a structural normalization gap. The selected
+repair adds
 
-The x2 network proves all explicit `fast_two_sum` preconditions and its final
-non-overlap relation. The original x3 network proved its tail relation but
-refuted the leading relation in the verifier's abstract model. A three-candidate
-A/B then established:
+```text
+two_sum(z0, z1)
+fast_two_sum(z1, z2)
+```
 
-- one final `two_sum(z0, z1)` is insufficient because it can break the tail
-  relation;
-- `two_sum(z0, z1)` followed by `fast_two_sum(z1, z2)` proves both relations;
-- a full fixed three-limb renormalization pass also proves both relations but is
-  not the minimal operation count.
+and `fma3.fpan` proves both final non-overlap relations as well as the explicit
+FastTwoSum preconditions. Diagnostic A/B history is retained in closed PR #9.
 
-The Julia x3 kernel and `fma3.fpan` therefore use the two-operation repair. The
-x4 source-mirrored universal proof currently exceeds the 600-second hosted-runner
-budget before reaching its first reported obligation. It remains exploratory
-and non-blocking; this is not a proof failure or a correctness counterexample.
+## x4
+
+The historical fixed-cost x4 model exposed an invalid
+`fast_two_sum(b, a1)` ordering assumption under destructive cancellation.
+Concrete Float64 tests then reproduced non-normalized old outputs. The accepted
+x4 source therefore uses general TwoSum transforms and delegates final
+normalization to `MultiFloats.renormalize`.
+
+`fma4.fpan` is retained only as a **historical rejected model** so the failure is
+auditable; it is not run by CI and must not be described as source-mirrored
+verification of the accepted x4 implementation. The x4 decomposition and repair
+experiments are retained in closed PR #10 and its Actions artifacts.
 
 ## CI policy
 
-x2 and x3 are strict jobs. x4 continues to run and upload its log, but it is an
-allowed failure until the verifier model is decomposed or a stronger/faster
-solver configuration is available.
+Only x2 and x3 are strict FPAN jobs. x4 correctness is guarded by the normal
+Julia suite, including BigFloat differential checks, SIMD lane equivalence,
+destructive cancellation, and the dedicated x4 safe-baseline diagnostic.
 
 FPANVerifier validates explicit `fast_two_sum` commands unconditionally. CI does
-not pass the verifier's optional `--check-fast-two-sum` flag because that flag
-also launches an optimization query for every ordinary `two_sum`, asking whether
-it could be replaced by `fast_two_sum`. Those replacement queries do not
-strengthen the obligations above and made the larger source-mirrored networks
+not pass `--check-fast-two-sum` because that optional flag additionally asks
+whether every ordinary TwoSum can be optimized to FastTwoSum and makes the model
 needlessly expensive.
 
-These obligations establish structural validity of the accumulation network;
-they do **not** yet prove the empirical constants `C_2 = 34`, `C_3 = 184`, and
-`C_4 = 812` from `docs/NUMERICAL_CONTRACT.md`, nor do they prove behavior for
-NaN, infinity, overflow, or underflow-adjacent inputs.
+These structural obligations do **not** prove the empirical constants
+`C_2 = 34`, `C_3 = 184`, and `C_4 = 812`, nor NaN/infinity/overflow/
+underflow-adjacent semantics.
 
 ## Local reproduction
 
-Install `z3-solver==4.13.4.0`, place a compatible `z3` executable on `PATH`,
-check out the pinned verifier, then run one or more specs:
-
 ```bash
 bash verification/run_fpan.sh /path/to/FPANVerifier verification/fma2.fpan
+bash verification/run_fpan.sh /path/to/FPANVerifier verification/fma3.fpan
 ```
 
-Any line beginning with `ERROR:` makes the wrapper fail, because FPANVerifier
-currently reports refuted `prove` statements and invalid `fast_two_sum` uses in
-text while continuing to process the remaining file.
+Any line beginning with `ERROR:` makes the wrapper fail.

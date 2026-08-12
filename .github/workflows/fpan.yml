@@ -19,23 +19,13 @@ permissions:
 
 jobs:
   verify-fpan:
-    name: ${{ matrix.spec }} structural proof obligations (${{ matrix.mode }})
+    name: ${{ matrix.spec }} structural proof obligations
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    continue-on-error: ${{ matrix.allow_failure }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - spec: fma2
-            mode: strict
-            allow_failure: false
-          - spec: fma3
-            mode: strict
-            allow_failure: false
-          - spec: fma4
-            mode: exploratory
-            allow_failure: true
+        spec: [fma2, fma3]
     steps:
       - uses: actions/checkout@v4
       - name: Check out pinned FPANVerifier
