@@ -14,22 +14,23 @@
   8192-bit packing checks.
 - Complete M3 with one no-FastTwoSum `add_safe` implementation for Float64x5-x8,
   exact tail/oracle/commutativity gates, and width-specific empirical C=1 gates.
-- Record first maximum safe-add constants: ~0.05283 (x5), ~0.02548 (x6),
-  ~0.01099 (x7), and ~0.00542 (x8).
-- Start M4 with `mul5_safe`, preserving every TwoProd product/residual and
-  requiring pair-level exact reconstruction plus exact full-product tail
-  accounting.
-- Generalize multiplication to one `mul_safe` implementation for Float64x5-x8.
-  Width N keeps all `2N^2` product/residual components, canonicalizes operand
-  order, fully renormalizes, and truncates only after the exact product expansion
-  is formed.
-- Add x6-x8 pairwise TwoProd exactness, exact head+tail reconstruction,
-  `reference_mul` equality, normalization, commutativity, dense/scaled/boundary
-  tests, and separate empirical relative-error gates.
-- Record first maximum `|err|/(u^N|x*y|)` values: ~0.04841 (x5), ~0.01837 (x6),
-  ~0.00726 (x7), and ~0.00254 (x8); all measured diagnostics had zero
-  oracle/normalization/commutativity failures.
-- Record first safe-mul timing snapshots on Zen 3: 32.84 ms/500 (x5),
-  5.059 ms/40 (x6), 5.710 ms/25 (x7), and 4.492 ms/12 (x8). Different case
-  counts reflect rapidly growing `2N^2` exact-expansion cost; these are not
-  performance targets.
+- Complete M4 with one no-FastTwoSum `mul_safe` implementation for Float64x5-x8,
+  exact pairwise TwoProd and full-product tail accounting, oracle equality,
+  commutativity, conservative underflow semantics, and width-specific gates.
+- Start M5 with `Experimental.fma5_safe`, a direct Float64x5 55-component
+  `x*y+c` correctness baseline built from all 25 TwoProd product/residual pairs
+  plus the five addend limbs before any five-limb truncation.
+- Add exact pairwise product checks, exact 55-term FMA head+tail reconstruction,
+  `reference_fma` equality, x/y symmetry, dense/scaled identities, powers of two,
+  and destructive-cancellation regression cases for direct x5 FMA.
+- Add an empirical direct-FMA C=1 gate for `|err|/(u^5(|xy|+|c|))`; the first
+  diagnostics measured maxima ~0.04568 ordinary and ~0.04928 scaled with zero
+  direct oracle/normalization/symmetry failures.
+- Compare direct FMA to the rounded composition `add_safe(mul_safe(x,y),c)`.
+  The composition disagreed with `reference_fma` in 45/200 ordinary, 41/200
+  scaled, and 150/150 destructive-cancellation cases, while the direct path had
+  zero oracle mismatches.
+- Record the first x5 timing A/B: 7.707 ms / 120 direct safe FMA operations vs
+  6.231 ms / 120 safe mul-then-add operations on the cited Zen 3 runner. The
+  direct correctness baseline is currently slower but avoids the intermediate
+  rounding error that dominates cancellation-sensitive use.

@@ -42,6 +42,7 @@ end
     @test :fma_fast in public_names
     @test :fma_fast_limbs in public_names
     @test :Experimental in public_names
+    @test :fma5_safe ∉ public_names
     @test :add_safe ∉ public_names
     @test :add5_safe ∉ public_names
     @test :add6_safe ∉ public_names
@@ -55,6 +56,7 @@ end
     @test :div_digits ∉ public_names
     @test :mul_scalar ∉ public_names
     @test :reference_add ∉ public_names
+    @test :fma5_safe in experimental_names
     @test :add_safe in experimental_names
     @test :add5_safe in experimental_names
     @test :add6_safe in experimental_names
@@ -242,3 +244,4 @@ include("add5_safe.jl")
 include("add6_add8_safe.jl")
 include("mul5_safe.jl")
 include("mul6_mul8_safe.jl")
+include("fma5_safe.jl")

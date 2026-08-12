@@ -2,64 +2,76 @@
 
 These are informational GitHub-hosted-runner snapshots, not portable hard gates.
 
-## Safe Float64x5-x8 multiplication — 2026-08-12 — Zen 3
+## Safe Float64x5 direct FMA — 2026-08-12 — Zen 3
 
-Julia 1.10.11. `mul_safe` is the M4 correctness family, not a performance
-candidate. Width N retains and fully normalizes all `2N^2` TwoProd product and
-residual components before N-limb truncation.
+Julia 1.10.11. `fma5_safe` is the first M5 correctness baseline. It forms and
+fully renormalizes one 55-component exact `x*y+c` expansion before five-limb
+truncation.
+
+| Corpus | Cases | Direct oracle failures | Mul-then-add oracle failures | Max `|err|/(u^5(|xy|+|c|))` |
+|---|---:|---:|---:|---:|
+| dense ordinary | 200 | 0 | 45 | 0.0456757 |
+| scaled | 200 | 0 | 41 | 0.0492768 |
+| destructive cancellation | 150 | 0 | 150 | ~1.01e-67 |
+
+The direct path also had zero normalization and x/y-symmetry failures. Its
+maximum result-relative errors in these seeded corpora were of order `1e-81`.
+The cancellation row is particularly important: the five-limb rounded
+composition `add_safe(mul_safe(x,y),c)` disagreed with the exact direct-FMA
+oracle in **every tested cancellation case**, despite both component operations
+having their own exact-oracle baselines.
+
+Timing for 120 cases:
+
+- direct 55-component safe FMA: **7.707 ms**;
+- safe `mul_safe` followed by `add_safe`: **6.231 ms**;
+- composition/direct = **0.809x**.
+
+Thus the first direct baseline is about 24% slower than the already-slow safe
+composition. M5 currently values it for avoiding intermediate-rounding loss;
+performance optimization begins only after the direct x5-x8 family and formal
+error analysis exist.
+
+CI uses C=1 for the operand-relative direct-FMA metric as an empirical gate, not
+a theorem.
+
+## Safe Float64x5-x8 multiplication — 2026-08-12 — Zen 3
 
 | Width | Max observed `|err|/(u^N|xy|)` | Informational timing |
 |---|---:|---:|
-| x5 | 0.0484069 | 32.84 ms / 500 |
-| x6 | 0.0183703 | 5.059 ms / 40 |
-| x7 | 0.00725543 | 5.710 ms / 25 |
-| x8 | 0.00253803 | 4.492 ms / 12 |
+| x5 | 0.0484069 | 25.734 ms / 500 |
+| x6 | 0.0183703 | 4.062 ms / 40 |
+| x7 | 0.00725543 | 4.578 ms / 25 |
+| x8 | 0.00253803 | 3.626 ms / 12 |
 
-For x6, dense/scaled diagnostics used 80+80 cases; for x7, 60+60; for x8,
-40+40. Every dense/scaled case had a nonzero discarded tail and every measured
-width had zero oracle mismatches, normalization failures, and commutativity
-failures. Power-of-two boundary cases were exact.
-
-The permanent unit corpus also checks each individual TwoProd pair with exact
-`Rational{BigInt}` reconstruction and verifies exact returned-head + discarded-
-tail reconstruction of the full product.
-
-CI uses a width-specific C=1 empirical relative-error gate. No value above is a
-formal worst-case bound.
-
-The timing columns use different case counts and must not be compared as raw
-throughputs without normalization. They only show that the over-complete safe
-family is intentionally expensive, especially as x8 reaches 128 exact product
-components.
+Every measured width had zero oracle, normalization, and commutativity failures.
+Different timing case counts reflect the growing `2N^2` exact expansion and are
+not throughput comparisons.
 
 ## Safe Float64x5-x8 addition — 2026-08-12 — Zen 3
 
-| Width | Max observed `|err|/(u^N(|x|+|y|))` | Time / 5000 scalar adds |
-|---|---:|---:|
-| x5 | 0.0528336 | 0.453 ms |
-| x6 | 0.0254805 | 0.544 ms |
-| x7 | 0.0109878 | 0.709 ms |
-| x8 | 0.00541727 | 1.442 ms |
+| Width | Max observed `|err|/(u^N(|x|+|y|))` |
+|---|---:|
+| x5 | 0.0528336 |
+| x6 | 0.0254805 |
+| x7 | 0.0109878 |
+| x8 | 0.00541727 |
 
-Every measured width had zero oracle mismatches, normalization failures, and
-commutativity failures. Near-cancellation diagnostics had zero discarded tail.
+All measured widths had zero oracle, normalization, and commutativity failures.
 
-## FMA context
+## Existing FMA context
 
-Scalar x3 and safe x4 custom FMA are not performance wins on the recorded
-runners, while SIMD x3 and safe x4 retain architecture-dependent benefits. The
-historical old x4 candidate remains rejected because cancellation violated a
-FastTwoSum precondition and produced non-normalized expansions.
-
-## Quotient-digit division
-
-Specialized scalar quotient-digit division remains noncompetitive; vector
-results are architecture/type dependent. It remains Experimental only.
+The x2-x4 fixed-cost/safe FMA snapshots remain architecture-sensitive: scalar x3
+and safe x4 are not current performance wins, while SIMD x3/x4 paths can be
+faster. The old x4 FastTwoSum network remains rejected due its concrete
+cancellation defect.
 
 ## Interpretation
 
-- correctness evidence overrides wall-time wins;
-- safe x5-x8 add/mul are oracle-matching baselines, not optimized APIs;
-- each operation and width keeps its own empirical tail measurement;
+- direct higher-limb FMA is numerically distinct from rounded mul-then-add;
+- cancellation demonstrates that distinction most strongly;
+- safe x5-x8 add/mul and x5 FMA are correctness baselines, not optimized APIs;
+- each width/operation keeps a separate empirical error metric;
 - formal tail analysis precedes fixed-cost minimization;
-- all future performance claims require deployment-CPU and downstream solver A/B.
+- deployment CPU and downstream solver A/B remain required for performance
+  conclusions.

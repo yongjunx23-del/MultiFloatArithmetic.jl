@@ -213,6 +213,7 @@ export add_safe, add_safe_limbs
 export add5_safe, add5_safe_limbs, add6_safe, add6_safe_limbs
 export add7_safe, add7_safe_limbs, add8_safe, add8_safe_limbs
 export div_digits, div_digits_limbs
+export fma5_safe, fma5_safe_limbs
 export mul_safe, mul_safe_limbs
 export mul5_safe, mul5_safe_limbs, mul6_safe, mul6_safe_limbs
 export mul7_safe, mul7_safe_limbs, mul8_safe, mul8_safe_limbs
@@ -224,6 +225,7 @@ include("division_digits.jl")
 include("reference_arithmetic.jl")
 include("add_safe.jl")
 include("mul_safe.jl")
+include("fma5_safe.jl")
 
 end # module Experimental
 
