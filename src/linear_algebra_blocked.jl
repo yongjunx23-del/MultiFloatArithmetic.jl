@@ -1,4 +1,4 @@
-# Blocked dense factorization experiments layered on top of MFLinearAlgebra.
+# Blocked dense factorization kernels layered on top of MFLinearAlgebra.
 # Each matrix element sees the same p=1,2,... chained-FMA order and operand
 # roles as the unblocked baseline. Blocking only reschedules independent element
 # updates; Vec8 only executes independent rows in parallel.
@@ -136,8 +136,9 @@ end
 """
     _potrf_blocked_vec8!(A, Val(BS); clean=true)
 
-Lower Cholesky scheduling experiment for dense Float64x4 matrices. The result
-must be bitwise identical to `_potrf_unblocked_kernel!`.
+Lower Cholesky kernel for dense Float64x4 matrices. It is deliberately
+bitwise-equivalent to `_potrf_unblocked_kernel!` and uses explicit Vec8 only
+across independent rows.
 """
 function _potrf_blocked_vec8!(
     A::Matrix{MultiFloat{Float64,4}},
@@ -166,6 +167,22 @@ function _potrf_blocked_vec8!(
         end
     end
     return A
+end
+
+# Hosted Zen3 A/B, after whole-matrix bitwise-equality gates:
+#   n=32: 1.70x, n=64: 2.34x, n=96: 2.74x (BS=8 versus unblocked).
+# Keep the dispatch narrower than the implementation: only dense Float64x4,
+# lower factorization, and the smallest size actually covered by the timing A/B.
+function potrf!(
+    A::Matrix{MultiFloat{Float64,4}};
+    uplo::Symbol=:L,
+    clean::Bool=true,
+)
+    n = size(A,1)
+    if uplo === :L && n >= 32
+        return _potrf_blocked_vec8!(A, Val(8); clean=clean)
+    end
+    return _potrf_unblocked_kernel!(A; uplo=uplo, clean=clean)
 end
 
 end # @eval MFLinearAlgebra
