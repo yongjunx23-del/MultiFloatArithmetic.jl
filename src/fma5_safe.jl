@@ -91,3 +91,6 @@ function fma5_safe(
     _check_fma5_input(c)
     return MultiFloat{Float64,5}(fma5_safe_limbs(x._limbs, y._limbs, c._limbs))
 end
+
+# Load the generic x5-x8 direct-FMA family after freezing the x5 wrapper above.
+include("fma_safe.jl")
