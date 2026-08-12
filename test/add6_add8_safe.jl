@@ -22,7 +22,10 @@
                N == 7 ? ExperimentalArithmetic.add7_safe :
                         ExperimentalArithmetic.add8_safe
 
-        function check_case(x::T, y::T)
+        # Use a closure rather than defining a method with `x::T`: method
+        # definitions do not capture the loop-local type alias `T` on Julia
+        # 1.10/current.
+        check_case = function (x, y)
             z = addN(x, y)
             full = ExperimentalArithmetic._add_safe_full_limbs(x._limbs, y._limbs)
             exact = Rational{BigInt}(x) + Rational{BigInt}(y)
