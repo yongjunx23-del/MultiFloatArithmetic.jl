@@ -133,3 +133,5 @@
         @test_throws DomainError fma5(tiny, small, T(0.0))
     end
 end
+
+include("fma6_fma8_safe.jl")
