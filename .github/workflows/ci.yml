@@ -40,7 +40,7 @@ jobs:
   smoke-benchmark:
     name: Arithmetic smoke and codegen
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
@@ -55,6 +55,8 @@ jobs:
         run: julia --project=. benchmark/simd_widths.jl
       - name: Measure Float64x3 proof-repair overhead
         run: julia --project=. benchmark/fma3_repair.jl
+      - name: Measure Float64x4 safe-baseline overhead
+        run: julia --project=. benchmark/fma4_safe.jl
       - name: Run rejected quotient-digit division A/B
         run: julia --project=. benchmark/division_digits.jl
       - name: Inspect FMA codegen metrics
