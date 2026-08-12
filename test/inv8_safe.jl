@@ -60,22 +60,19 @@
             @test BigFloat(err) / abs(BigFloat(qref)) <= BigFloat(2)^(-410)
         end
 
-        # One step is an A/B observation, not yet an acceptance requirement.
-        return one_step === oracle
+        # One-step oracle equality is deliberately measured in the benchmark,
+        # not required here until the A/B result justifies shortening the public
+        # two-correction baseline.
+        return nothing
     end
 
-    one_step_matches = 0
-    total = 0
     @testset "ordinary and scaled inputs" begin
         for _ in 1:20
-            total += 1
-            one_step_matches += check_case(dense_inv8(emin=-40, emax=40))
+            check_case(dense_inv8(emin=-40, emax=40))
         end
         for _ in 1:20
-            total += 1
-            one_step_matches += check_case(dense_inv8(emin=-100, emax=100))
+            check_case(dense_inv8(emin=-100, emax=100))
         end
-        @test 0 <= one_step_matches <= total
     end
 
     @testset "identities, signs, and powers of two" begin
