@@ -1,167 +1,174 @@
 # Project status
 
 Status date: **2026-08-12**
-Current milestone: **M5 complete baseline — safe direct Float64x5-x8 FMA family**
+Current milestone: **M6 arithmetic/oracle baseline with x4 performance decision frozen**
 
 ## Executive assessment
 
-The project now has correctness-first higher-limb baselines for all three core
-arithmetic operations needed by later residual/refinement kernels:
+The project now has a verification-oriented arithmetic baseline rather than a
+blanket replacement for `MultiFloats.jl`:
 
-- x2/x3 fixed-cost FMA networks with pinned structural verification;
-- x4 cancellation-safe TwoSum + `renormalize` FMA baseline;
-- exact-rational Experimental add/sub/mul/FMA oracles for x5-x8;
-- one no-FastTwoSum safe addition family for Float64x5-x8;
-- one no-FastTwoSum safe multiplication family for Float64x5-x8;
-- one **direct** safe FMA family for Float64x5-x8 that forms the full exact
-  `x*y+c` expansion before any N-limb truncation.
+- x2/x3 fixed-cost direct-FMA networks with pinned structural verification;
+- x4 cancellation-safe direct FMA;
+- exact/adaptive higher-precision reference oracles;
+- correctness-first x5-x8 add/mul/direct-FMA baselines;
+- an accepted Float64x5 reciprocal seed/correction path;
+- permanent BigFloat128/256/512 versus Float64x2/x4/x8 comparison benchmarks.
 
-M5 is therefore complete as a correctness baseline. The current x5-x8 safe
-mul/FMA implementations are deliberately over-complete, allocating, and slow;
-they are reference implementations for later minimization rather than candidate
-production kernels.
+The x5-x8 safe mul/FMA implementations are intentionally over-complete reference
+implementations. They are not performance kernels.
 
-The requested BigFloat comparison makes that distinction concrete: original
-upstream MultiFloat x2/x4 arithmetic is much faster than BigFloat128/256 in the
-hosted throughput benchmark, whereas the current correctness-only x8 safe
-multiplication is roughly 3,600x slower than BigFloat512. A smaller verified x8
-product/FMA network is mandatory before M7 performance claims.
+## x4 performance decision
 
-## M5 safe direct FMA family
+A fresh Zen 3 diagnostic tested whether the conservative x4 repair could be
+recovered cheaply without hidden FastTwoSum assumptions.
 
-`Experimental.fma_safe` covers N=5:8. Width N:
+### What was tested
 
-1. obtains all `2N^2` exact TwoProd rounded-product/residual components from the
-   M4 multiplication decomposition;
-2. appends all N exact limbs of `c`;
-3. canonicalizes signed zero and deterministically sorts the full component set;
-4. fully `renormalize`s the exact direct `x*y+c` expansion;
-5. retains the leading N limbs and renormalizes that head.
+1. profile the final four-term `renormalize` input;
+2. unroll several renormalization passes with the authoritative fallback;
+3. test a scalar guarded tail where each FastTwoSum is used only when its
+   `|a| >= |b|` precondition is explicitly true, otherwise TwoSum is used;
+4. keep the current safe renormalization fallback whenever the four-term result
+   is not already stable;
+5. require bitwise equality with the current safe direct-FMA result on ordinary,
+   destructive-cancellation, and wide-exponent corpora.
 
-The full component counts are 55, 78, 105, and 136 for x5, x6, x7, and x8.
-No FastTwoSum is used. Product-side overflow/subnormal/underflow exclusions
-inherit the current M4 `mul_safe` contract.
+### Result
 
-The frozen x5 wrapper `fma5_safe` remains available; the generic family is
-required to match it bit-for-bit. Width-specific wrappers `fma6_safe`,
-`fma7_safe`, and `fma8_safe` call the generic construction.
+For the final-renormalization input:
 
-### Permanent correctness gates
+- ordinary: 20,000 / 20,000 cases already stable before generic renormalization;
+- destructive cancellation: 2,364 / 5,000 already stable, 2,636 / 5,000 need
+  only one changing pass;
+- a simple unrolled-renormalization specialization improves scalar time by only
+  about 4% and remains about 1.9x the time of upstream `x*y+c`.
 
-For every accepted width/case CI requires:
+The stronger guarded-FastTwoSum candidate passes its empirical safety gates:
 
-```text
-value(result) + value(discarded normalized tail)
-= value(x) * value(y) + value(c)
-```
+- 20,000 ordinary cases: bitwise equal to current safe;
+- 10,000 destructive-cancellation cases: zero normalization failures and zero
+  guarded-vs-safe mismatches;
+- 20,000 wide-exponent cases: zero guarded-vs-safe mismatches.
 
-It also checks every individual TwoProd pair by exact `Rational{BigInt}`
-reconstruction, normalized full/output expansions, bitwise `reference_fma`
-equality, bitwise x/y symmetry, generic/wrapper equality, identities,
-dense/scaled inputs, powers of two, and destructive cancellation.
+But it provides **no performance win** on the hosted Zen 3 run:
 
-All x5-x8 direct-FMA gates pass on Linux Julia 1.10/current and macOS current.
+| Float64x4 scalar, 20k cases | Time |
+|---|---:|
+| historical unsafe direct tail | 0.156 ms |
+| current safe direct FMA | 0.658 ms |
+| guarded direct FMA | 0.660 ms |
+| upstream `x*y+c` | 0.329 ms |
 
-### First width-specific direct-FMA diagnostics
+Therefore the x4 scalar slowdown is not primarily the generic renormalization
+loop, and dynamic FastTwoSum guards do not recover it. **Further x4 scalar
+micro-optimization is stopped.** A future x4 change is justified only by a new
+source-specific fixed-cost proof/compressor, not by more guard or renormalization
+tuning.
 
-Zen 3, Julia 1.10.11. `C=1` remains a deliberately loose empirical regression
-gate, not a theorem.
+The SIMD conclusion is different. On the same class of Zen 3 hosted runs,
+current direct x4 FMA remains roughly 1.3x-1.7x faster than upstream mul+add for
+Vec2/Vec4/Vec8 workloads. This is the useful x4 deployment path.
 
-| Width | Max observed `|err|/(u^N(|xy|+|c|))` | Direct oracle / norm / symmetry failures |
-|---|---:|---:|
-| x5 | 0.0492768 | 0 / 0 / 0 |
-| x6 | 0.0227603 | 0 / 0 / 0 |
-| x7 | 0.00452122 | 0 / 0 / 0 |
-| x8 | 0.000825581 | 0 / 0 / 0 |
+## x4 numerical comparison with original MultiFloats composition
 
-The maximum is taken over the ordinary/scaled seeded corpora for each width.
-Destructive-cancellation operand-relative constants were many orders smaller
-because the scale is `|xy|+|c|` while the surviving result is tiny.
+Upstream `x*y+c` is not being characterized as unstable: it is the normal
+separately-rounded MultiFloats multiplication and addition path. The project
+provides a different direct-FMA operation.
 
-### Direct FMA versus rounded multiplication followed by addition
+On 5,000 seeded destructive-cancellation cases, using exact `Rational{BigInt}`
+`x*y+c` as the error reference:
 
-The exact direct-FMA oracle exposes intermediate-rounding loss even though
-`mul_safe` and `add_safe` separately match their own operation-specific oracles:
+- project direct FMA had smaller exact error in **3,215 / 5,000** cases;
+- upstream `x*y+c` had smaller error in **591 / 5,000** cases;
+- they had equal error in **1,194 / 5,000** cases.
 
-| Width | Ordinary composition mismatches | Scaled mismatches | Destructive-cancellation mismatches |
-|---|---:|---:|---:|
-| x5 | 45 / 200 | 41 / 200 | **150 / 150** |
-| x6 | 8 / 50 | 14 / 50 | **48 / 48** |
-| x7 | 7 / 35 | 9 / 35 | **32 / 32** |
-| x8 | 6 / 25 | 6 / 25 | **24 / 24** |
+Thus direct FMA is often more accurate under severe cancellation, but it is not
+universally more accurate than the separately-rounded composition.
 
-Thus `add_safe(mul_safe(x,y),c)` is permanently rejected as an exact substitute
-for direct FMA in cancellation-sensitive residual, refinement, or certificate
-work.
+## Current comparison with released MultiFloats v3.2.6
 
-### Safe-baseline timing A/B
+The project currently pins MultiFloats v3.2.6. Ordinary x2/x4 add and multiply
+remain upstream MultiFloats strengths; this project should not replace them just
+for the sake of replacement.
 
-Same hosted Zen 3 run; case counts differ because the exact expansion grows to
-136 components at x8.
+Recent hosted scalar throughput-equivalent measurements:
 
-| Width | Direct safe FMA | Safe mul-then-add | Composition/direct |
-|---|---:|---:|---:|
-| x5 | 9.852 ms / 120 | 7.993 ms / 120 | 0.811x |
-| x6 | 3.044 ms / 20 | 2.550 ms / 20 | 0.837x |
-| x7 | 3.186 ms / 12 | 2.726 ms / 12 | 0.856x |
-| x8 | 2.625 ms / 6 | 2.314 ms / 6 | 0.882x |
+| Operation | Original/upstream path | Project path | Decision |
+|---|---:|---:|---|
+| x2 mul+add | ~2.1 ns/op | `fma_fast` ~1.5 ns/op | project direct FMA faster |
+| x4 add | ~7.1 ns/op | upstream is the implementation | keep upstream |
+| x4 mul | ~7.3 ns/op | upstream is the implementation | keep upstream |
+| x4 mul+add / direct FMA | ~16.3 ns/op | ~32.9 ns/op | upstream faster scalar |
+| x4 Vec2/4/8 mul+add / direct FMA | baseline | project ~1.3x-1.7x faster | project useful for SIMD |
 
-The direct baseline remains slower, but its relative overhead shrinks with width
-in this sample. These timings are reference-path diagnostics, not performance
-targets.
+The project is therefore **not** currently a blanket faster replacement for
+MultiFloats. It is a direct-FMA / verification / higher-width extension with
+selected performance wins.
 
-## Requested BigFloat comparison
+## BigFloat comparison
 
-The permanent comparison benchmark pairs BigFloat128/256/512 with Float64x2/x4/
-x8. The pairings are intentionally unequal precision: BigFloat has about 20.8%
-more nominal significand bits.
+The permanent benchmark pairs BigFloat128/256/512 with Float64x2/x4/x8. These
+pairs intentionally give BigFloat about 20.8% more nominal significand bits.
 
-First hosted throughput-equivalent results:
+Latest Zen 3 snapshot:
 
-- original x2 add/mul were about 36x/91x higher throughput than BigFloat128;
-- original x4 add/mul were about 6x/9x higher throughput than BigFloat256;
-- current safe x8 add was about 4.6x slower than BigFloat512;
-- current safe x8 multiplication was about **3,644x slower** than BigFloat512.
+- BigFloat128 add/mul: ~33.7 / 47.7 ns; original Float64x2: ~1.4 / 1.0 ns;
+- BigFloat256 add/mul: ~41.6 / 69.6 ns; original Float64x4: ~7.1 / 7.3 ns;
+- BigFloat512 add/mul: ~51.5 / 107 ns; current correctness-only Float64x8:
+  ~285 ns / **367,305 ns**.
 
-See `docs/BIGFLOAT_MULTIFLOAT_COMPARISON.md`. The x8 result is a development
-signal about the over-complete safe implementation, not evidence against an
-optimized fixed-limb design.
+The x8 number is a property of the current over-complete reference algorithm,
+not a reason to conclude that optimized fixed-limb x8 cannot work.
 
-## M4 safe multiplication family
+## x8 optimization decision
 
-`Experimental.mul_safe` and `mul5_safe` ... `mul8_safe` retain all `2N^2`
-TwoProd components, canonicalize their order, fully renormalize, and truncate
-only after the exact product expansion exists. First max observed
-`|err|/(u^N|xy|)` values were 0.0484069, 0.0183703, 0.00725543, and 0.00253803
-for x5-x8, with zero measured oracle/normalization/commutativity failures.
+**Optimize x8, but redesign it; do not micro-optimize the present safe
+implementation.**
 
-## M3 safe addition family
+The current x8 multiplication constructs all 128 TwoProd product/residual
+components, orders them, fully renormalizes them, and truncates only afterward.
+No local finalizer optimization can close a three-orders-of-magnitude-plus gap.
 
-`Experimental.add_safe` and `add5_safe` ... `add8_safe` use N general TwoSums,
-full exact 2N-term renormalization, N-limb truncation, and head renormalization.
-First max observed `|err|/(u^N(|x|+|y|))` values were 0.0528336, 0.0254805,
-0.0109878, and 0.00541727 for x5-x8.
+The performance track is therefore:
 
-## Current decisions
+1. keep the current x5-x8 exact/safe implementations as independent rejection
+   oracles;
+2. derive a diagonal/truncated fixed-cost multiplication network, beginning at
+   x5/x6 where proof/debug cost is lower;
+3. build the matching direct-FMA network without rounded mul-then-add
+   composition;
+4. target SIMD/`MultiFloatVec` from the start, because x4 evidence shows the
+   strongest fixed-limb performance advantage there;
+5. promote the design to x8 only after x5/x6 achieve zero oracle failures and a
+   material performance win;
+6. compare x8 against BigFloat512 and against any relevant upstream master
+   implementation before M7 integration.
+
+Go/no-go for production x8: it must cease to be a reference-only kernel and show
+an end-to-end material advantage in the intended vector/matrix workload. If it
+cannot beat or materially outperform BigFloat512 after the network redesign,
+M7 should use x4 or BigFloat rather than forcing x8.
+
+## Current arithmetic decisions
 
 | Component | Decision |
 |---|---|
-| x2/x3 fixed-cost FMA | structurally verified; architecture-sensitive performance |
-| x4 FMA | cancellation-safe correctness baseline |
-| x5-x8 `reference_*` | exact Experimental oracle |
-| x5-x8 `add_safe` | accepted M3 Experimental correctness family |
-| x5-x8 `mul_safe` | accepted M4 Experimental correctness family |
-| x5-x8 `fma_safe` | accepted M5 Experimental direct-FMA correctness family |
-| mul-safe -> add-safe FMA composition | rejected as direct-FMA substitute; fails every tested destructive-cancellation case |
-| safe x8 mul/FMA | correctness reference only; far too slow for M7 hot paths |
-| fixed-cost high-limb add/mul/FMA | formal tail analysis + source-specific network search next |
-| reciprocal/div/sqrt | M6 correctness baseline next |
-| native DOT/SYRK/TRSM/GEMM | M7 after competitive arithmetic survivors exist |
+| x2 direct FMA | keep; scalar performance win observed |
+| x3 direct FMA | keep; proof-driven repair, mainly SIMD performance case |
+| x4 scalar direct FMA | correctness feature; stop micro-optimization |
+| x4 SIMD direct FMA | keep; measured performance win |
+| x5-x8 `reference_*` | authoritative Experimental rejection oracle |
+| x5-x8 safe add/mul/FMA | correctness/reference baselines |
+| current x8 safe mul/FMA | never use as M7 hot-path performance kernel |
+| optimized x8 | pursue only as a new fixed-cost SIMD-first network |
+| rounded mul-safe -> add-safe as direct FMA | rejected under cancellation |
+| native DOT/SYRK/TRSM/GEMM | after competitive arithmetic survivors exist |
 
-## Immediate next milestone
+## Immediate next performance milestone
 
-Start **M6** with a correctness-first Float64x5 reciprocal/division baseline and
-an independent high-precision oracle. Use direct FMA/submul for residual
-corrections where it avoids intermediate rounding. In parallel, begin the formal
-error/tail analysis and product-network reduction needed to replace the current
-over-complete x8 multiplication/FMA before M7 performance integration.
+Do **not** spend another iteration on x4 scalar guards or generic
+renormalization. Start the high-limb network-reduction track at x5/x6, preserving
+all existing exact/oracle tests. The target is a fixed-cost, allocation-free,
+SIMD-friendly multiplication/direct-FMA construction that can later be lifted
+to x8 and measured against BigFloat512.
