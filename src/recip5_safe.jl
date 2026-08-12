@@ -12,6 +12,8 @@
 # Both e and z_new are evaluated with direct fma5_safe, avoiding the rounded
 # mul-then-add behavior M5 rejected under cancellation.
 
+export recip5_safe
+
 const _Float64x4_recip5 = MultiFloat{Float64,4}
 const _Float64x5_recip5 = MultiFloat{Float64,5}
 
