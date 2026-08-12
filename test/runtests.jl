@@ -42,6 +42,7 @@ end
     @test :fma_fast in public_names
     @test :fma_fast_limbs in public_names
     @test :Experimental in public_names
+    @test :MFLinearAlgebra in public_names
     @test :fma5_safe ∉ public_names
     @test :add_safe ∉ public_names
     @test :add5_safe ∉ public_names
@@ -251,3 +252,4 @@ include("mul5_safe.jl")
 include("mul6_mul8_safe.jl")
 include("fma5_safe.jl")
 include("paper2607_v4.jl")
+include("linear_algebra.jl")

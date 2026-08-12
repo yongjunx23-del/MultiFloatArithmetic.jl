@@ -11,7 +11,7 @@ module MultiFloatArithmetic
 using MultiFloats
 import MultiFloats: MultiFloat, MultiFloatVec, fast_two_sum, two_prod, two_sum
 
-export Experimental, fma_fast, fma_fast_limbs
+export Experimental, MFLinearAlgebra, fma_fast, fma_fast_limbs
 
 """
     fma_fast_limbs(x, y, c)
@@ -270,5 +270,7 @@ include("mul_safe.jl")
 include("fma5_safe.jl")
 
 end # module Experimental
+
+include("linear_algebra.jl")
 
 end # module MultiFloatArithmetic

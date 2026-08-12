@@ -1,0 +1,82 @@
+using LinearAlgebra
+using MultiFloatArithmetic
+using MultiFloats
+using Random
+using Printf
+
+const MFLA = MultiFloatArithmetic.MFLinearAlgebra
+
+function minimum_time(f; samples=5)
+    f()
+    best = Inf
+    for _ in 1:samples
+        GC.gc()
+        best = min(best, @elapsed f())
+    end
+    return best
+end
+
+function bench_gemm(::Type{M}, n) where {M<:MultiFloat}
+    Random.seed!(0x6e6d + n + sizeof(M))
+    A = rand(M, n, n)
+    B = rand(M, n, n)
+    Cfast = zeros(M, n, n)
+    Cgeneric = similar(Cfast)
+
+    fast!() = MFLA.gemm!(Cfast, A, B)
+    generic!() = mul!(Cgeneric, A, B)
+
+    fast!(); generic!()
+    @assert all(MultiFloats.isnormalized, Cfast)
+
+    tf = minimum_time(fast!)
+    tg = minimum_time(generic!)
+    work = 2n^3
+    @printf("  GEMM n=%d: direct-FMA=%8.3f ms (%7.1f MFLOP/s), generic=%8.3f ms, speedup=%5.2fx\n",
+            n, 1e3tf, work/tf/1e6, 1e3tg, tg/tf)
+end
+
+function bench_gemv(::Type{M}, m, n) where {M<:MultiFloat}
+    Random.seed!(0x6e76 + m + n + sizeof(M))
+    A = rand(M, m, n)
+    x = rand(M, n)
+    yfast = zeros(M, m)
+    ygeneric = similar(yfast)
+
+    fast!() = MFLA.gemv!(yfast, A, x)
+    generic!() = mul!(ygeneric, A, x)
+
+    fast!(); generic!()
+    tf = minimum_time(fast!)
+    tg = minimum_time(generic!)
+    work = 2m*n
+    @printf("  GEMV %dx%d: direct-FMA=%8.3f ms (%7.1f MFLOP/s), generic=%8.3f ms, speedup=%5.2fx\n",
+            m, n, 1e3tf, work/tf/1e6, 1e3tg, tg/tf)
+end
+
+function bench_dot(::Type{M}, n) where {M<:MultiFloat}
+    Random.seed!(0xd07 + n + sizeof(M))
+    x = rand(M, n)
+    y = rand(M, n)
+    sink = Ref(zero(M))
+
+    fast!() = (sink[] = MFLA.mfdot(x, y))
+    generic!() = (sink[] = sum(x .* y))
+
+    tf = minimum_time(fast!)
+    tg = minimum_time(generic!)
+    @printf("  DOT n=%d: direct-FMA=%8.3f ms, generic mul+sum=%8.3f ms, speedup=%5.2fx\n",
+            n, 1e3tf, 1e3tg, tg/tf)
+end
+
+println("MultiFloat linear algebra direct-FMA benchmark; informational")
+println("CPU: ", Sys.CPU_NAME)
+println("MultiFloats: ", Base.pkgversion(MultiFloats))
+for M in (Float64x2, Float64x4)
+    println(M)
+    bench_dot(M, 20_000)
+    bench_gemv(M, 256, 128)
+    for n in (16, 32, 48)
+        bench_gemm(M, n)
+    end
+end
