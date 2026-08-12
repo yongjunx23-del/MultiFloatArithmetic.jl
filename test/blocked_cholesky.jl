@@ -1,5 +1,4 @@
 const BlockedLA = MultiFloatArithmetic.MFLinearAlgebra
-include(joinpath(@__DIR__, "..", "src", "linear_algebra_blocked.jl"))
 
 function blocked_test_spd_x4(n)
     M = Float64x4
@@ -33,6 +32,11 @@ end
         BlockedLA._potrf_unblocked_kernel!(baseline)
         @test all(MultiFloats.isnormalized, baseline)
 
+        public = copy(A)
+        BlockedLA.potrf!(public; uplo=:L)
+        @test all(i -> public[i] === baseline[i], eachindex(public, baseline))
+        @test all(MultiFloats.isnormalized, public)
+
         for bs in (8, 16)
             blocked = copy(A)
             BlockedLA._potrf_blocked_vec8!(blocked, Val(bs))
@@ -40,4 +44,14 @@ end
             @test all(MultiFloats.isnormalized, blocked)
         end
     end
+
+    # The optimized dispatch is lower-only. A large upper factorization must
+    # still take the unblocked fallback without changing semantics.
+    A = blocked_test_spd_x4(33)
+    upper_ref = copy(A)
+    upper_public = copy(A)
+    BlockedLA._potrf_unblocked_kernel!(upper_ref; uplo=:U)
+    BlockedLA.potrf!(upper_public; uplo=:U)
+    @test all(i -> upper_public[i] === upper_ref[i], eachindex(upper_ref, upper_public))
+    @test all(MultiFloats.isnormalized, upper_public)
 end
