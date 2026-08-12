@@ -16,7 +16,7 @@ function _mul_safe_terms(
     N in 5:8 || throw(ArgumentError(
         "safe multiplication currently supports N = 5, 6, 7, or 8",
     ))
-    terms = Vector{Float64}(undef, 2N^2)
+    terms = Vector{Float64}(undef, 2 * N^2)
     k = 1
     @inbounds for i in 1:N
         xi = x[i]
@@ -60,6 +60,11 @@ function _mul_safe_full_limbs(
 ) where {N}
     return renormalize(_mul_safe_terms(x, y))
 end
+
+# Backward-compatible internal names used by the already-frozen x5 diagnostic.
+_mul5_terms(x::NTuple{5,Float64}, y::NTuple{5,Float64}) = _mul_safe_terms(x, y)
+_mul5_full_limbs(x::NTuple{5,Float64}, y::NTuple{5,Float64}) =
+    _mul_safe_full_limbs(x, y)
 
 """
     mul_safe_limbs(x, y)
