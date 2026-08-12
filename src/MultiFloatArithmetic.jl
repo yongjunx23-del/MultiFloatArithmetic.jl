@@ -272,5 +272,6 @@ include("fma5_safe.jl")
 end # module Experimental
 
 include("linear_algebra.jl")
+include("linear_algebra_microkernels.jl")
 
 end # module MultiFloatArithmetic
