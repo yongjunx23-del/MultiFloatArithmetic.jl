@@ -15,6 +15,15 @@ function pow2q(e::Int)
         BigInt(1) // (BigInt(1) << (-e))
 end
 
+function min_time(f; samples=7)
+    best = Inf
+    for _ in 1:samples
+        GC.gc()
+        best = min(best, @elapsed f())
+    end
+    return best
+end
+
 mutable struct AddStats
     n::Int
     mismatches::Int
@@ -106,8 +115,28 @@ function run_width(N)
     assert_gate(cancellation)
 end
 
+function run_timing(N; n=5_000)
+    T = MultiFloat{Float64,N}
+    Random.seed!(0xad70_2026 + N)
+    xs = [rand(Bool) ? rand(T) : -rand(T) for _ in 1:n]
+    ys = [rand(Bool) ? rand(T) : -rand(T) for _ in 1:n]
+    out = Vector{T}(undef, n)
+
+    safe!() = begin
+        @inbounds for i in eachindex(xs)
+            out[i] = E.add_safe(xs[i], ys[i])
+        end
+        out
+    end
+
+    safe!()
+    ts = min_time(safe!)
+    println("Float64x$(N) safe addition: $(round(ts*1e3; digits=3)) ms for $(n) cases")
+end
+
 println("M3 Float64x6-x8 safe-addition diagnostics")
 println("CPU: ", Sys.CPU_NAME)
 for N in 6:8
     run_width(N)
+    run_timing(N)
 end
