@@ -44,8 +44,13 @@ end
     @test :Experimental in public_names
     @test :div_digits ∉ public_names
     @test :mul_scalar ∉ public_names
+    @test :reference_add ∉ public_names
     @test :div_digits in experimental_names
     @test :mul_scalar in experimental_names
+    @test :reference_add in experimental_names
+    @test :reference_sub in experimental_names
+    @test :reference_mul in experimental_names
+    @test :reference_fma in experimental_names
 
     T5 = MultiFloat{Float64,5}
     @test_throws ArgumentError fma_fast(T5(1.0), T5(1.0), T5(0.0))
@@ -212,3 +217,4 @@ end
 
 include("mul_scalar.jl")
 include("division_digits.jl")
+include("reference_arithmetic.jl")
