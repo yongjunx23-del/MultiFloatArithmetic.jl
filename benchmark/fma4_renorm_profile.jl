@@ -133,6 +133,35 @@ function profile_updates(label, xs, ys, cs)
     return counts
 end
 
+function cancellation_accuracy(xs, ys, cs)
+    direct_better = 0
+    upstream_better = 0
+    equal_error = 0
+    bitwise_same = 0
+    direct_exact = 0
+    upstream_exact = 0
+    for i in eachindex(xs)
+        direct = fma_fast(xs[i], ys[i], cs[i])
+        upstream = xs[i] * ys[i] + cs[i]
+        ref = Rational{BigInt}(xs[i]) * Rational{BigInt}(ys[i]) + Rational{BigInt}(cs[i])
+        ed = abs(Rational{BigInt}(direct) - ref)
+        eu = abs(Rational{BigInt}(upstream) - ref)
+        direct_better += ed < eu
+        upstream_better += eu < ed
+        equal_error += ed == eu
+        bitwise_same += direct === upstream
+        direct_exact += iszero(ed)
+        upstream_exact += iszero(eu)
+    end
+    println("destructive-cancellation direct-FMA vs upstream x*y+c")
+    println("  direct_better=", direct_better, "/", length(xs),
+            ", upstream_better=", upstream_better,
+            ", equal_error=", equal_error)
+    println("  bitwise_same=", bitwise_same, "/", length(xs),
+            ", direct_exact=", direct_exact,
+            ", upstream_exact=", upstream_exact)
+end
+
 function main()
     Random.seed!(0xf4a4_2026)
     n = 20_000
@@ -152,6 +181,7 @@ function main()
         end
     end
     profile_updates("destructive-cancellation x4 profile", xcancel, ycancel, ccancel)
+    cancellation_accuracy(xcancel, ycancel, ccancel)
 
     current = similar(xs)
     specialized = similar(xs)
