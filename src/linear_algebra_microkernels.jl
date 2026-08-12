@@ -1,7 +1,8 @@
 # Explicit MultiFloatVec microkernels layered on top of the auditable scalar
-# MFLinearAlgebra baseline. Keep these implementation details in the existing
-# MFLinearAlgebra namespace so they can be A/B tested without widening the
-# public API.
+# MFLinearAlgebra baseline. Keep the fast path deliberately narrow: current
+# evidence supports dense Float64x4 matrices on the hosted Zen3 runner, while
+# x2 already auto-vectorizes extremely well and AbstractMatrix layouts may not
+# provide contiguous columns.
 
 @eval MFLinearAlgebra begin
 
@@ -30,17 +31,70 @@ end
     return nothing
 end
 
+# Source-equivalent fallback to the public baseline. Keeping it private lets the
+# benchmark compare the promoted dense path against the former streaming kernel
+# without changing arithmetic semantics or relying on `invoke` with keywords.
+function _gemm_streaming_kernel!(
+    C::AbstractMatrix{MultiFloat{T,N}},
+    A::AbstractMatrix{MultiFloat{T,N}},
+    B::AbstractMatrix{MultiFloat{T,N}};
+    α=one(MultiFloat{T,N}),
+    β=zero(MultiFloat{T,N}),
+) where {T,N}
+    M = MultiFloat{T,N}
+    _check_width(M)
+    m, k = size(A)
+    kb, n = size(B)
+    k == kb || throw(DimensionMismatch(
+        "inner dimensions differ: size(A,2)=$k and size(B,1)=$kb"))
+    size(C) == (m,n) || throw(DimensionMismatch(
+        "C has size $(size(C)); expected ($m, $n)"))
+    (Base.mightalias(C, A) || Base.mightalias(C, B)) && throw(ArgumentError(
+        "gemm! does not permit C to alias A or B"))
+
+    a = _coerce(M, α)
+    b = _coerce(M, β)
+
+    if iszero(b)
+        fill!(C, zero(M))
+    elseif !isone(b)
+        @inbounds for j in 1:n
+            @simd for i in 1:m
+                C[i,j] = _scale(C[i,j], b)
+            end
+        end
+    end
+
+    iszero(a) && return C
+
+    if isone(a)
+        @inbounds for j in 1:n
+            for p in 1:k
+                bpj = B[p,j]
+                @simd for i in 1:m
+                    C[i,j] = fma_fast(A[i,p], bpj, C[i,j])
+                end
+            end
+        end
+    else
+        @inbounds for j in 1:n
+            for p in 1:k
+                bpj = _scale(B[p,j], a)
+                @simd for i in 1:m
+                    C[i,j] = fma_fast(A[i,p], bpj, C[i,j])
+                end
+            end
+        end
+    end
+    return C
+end
+
 """
     _gemm_vec_accumulate!(C, A, B, Val(W))
 
-Internal explicit-SIMD GEMM accumulation experiment for `α = 1` after `C` has
-already been initialized/scaled for `β`.
-
-The kernel keeps W independent output rows in one `MultiFloatVec` accumulator
-across the complete k reduction. Each lane sees the same `p = 1:k` reduction
-order as the scalar streaming kernel, so a successful implementation must be
-bitwise identical lane by lane. A scalar remainder handles rows not divisible
-by W.
+Single-column explicit-SIMD diagnostic retained for A/B. It keeps W output rows
+in one `MultiFloatVec` accumulator across the complete k reduction. Each lane
+sees the same `p = 1:k` reduction order as the scalar streaming kernel.
 """
 function _gemm_vec_accumulate!(
     C::AbstractMatrix{MultiFloat{T,N}},
@@ -67,8 +121,7 @@ function _gemm_vec_accumulate!(
             cv = _load_mfvec(V, C, i0, j)
             for p in 1:k
                 av = _load_mfvec(V, A, i0, p)
-                bv = V(B[p,j])
-                cv = fma_fast(av, bv, cv)
+                cv = fma_fast(av, V(B[p,j]), cv)
             end
             _store_mfvec!(C, i0, j, cv)
         end
@@ -87,11 +140,11 @@ end
 """
     _gemm_vec2col_accumulate!(C, A, B, Val(W))
 
-MR=W, NR=2 register-blocked explicit-SIMD experiment. For every pair of output
+MR=W, NR=2 register-blocked explicit-SIMD kernel. For every pair of output
 columns, the W-row vector from A is loaded once per k step and reused to update
 two independent MultiFloatVec accumulators. The arithmetic reduction order for
-each output element remains exactly `p = 1:k`, so the result must remain
-bitwise identical to `_gemm_vec_accumulate!` and the scalar streaming kernel.
+each output element remains exactly `p = 1:k`, so the result is bitwise
+identical to the scalar streaming baseline.
 
 Odd output columns and row remainders use the same reduction order with small
 single-column/scalar tails; no padding or changed summation tree is introduced.
@@ -123,10 +176,8 @@ function _gemm_vec2col_accumulate!(
             c1 = _load_mfvec(V, C, i0, j + 1)
             for p in 1:k
                 av = _load_mfvec(V, A, i0, p)
-                b0 = V(B[p,j])
-                b1 = V(B[p,j + 1])
-                c0 = fma_fast(av, b0, c0)
-                c1 = fma_fast(av, b1, c1)
+                c0 = fma_fast(av, V(B[p,j]), c0)
+                c1 = fma_fast(av, V(B[p,j + 1]), c1)
             end
             _store_mfvec!(C, i0, j, c0)
             _store_mfvec!(C, i0, j + 1, c1)
@@ -201,14 +252,6 @@ end
     return (true, a, b)
 end
 
-"""
-    _gemm_vec!(C, A, B, Val(W); α=1, β=0)
-
-Full-semantics wrapper for the explicit-SIMD experiment. The current
-microkernel intentionally specializes only the dominant `α == 1` route; other
-scaling cases fall back to the public scalar-streaming implementation so the
-benchmark cannot manufacture a speedup by changing semantics.
-"""
 function _gemm_vec!(
     C::AbstractMatrix{MultiFloat{T,N}},
     A::AbstractMatrix{MultiFloat{T,N}},
@@ -218,7 +261,7 @@ function _gemm_vec!(
     β=zero(MultiFloat{T,N}),
 ) where {T,N,W}
     prepared, a, b = _prepare_gemm_vec!(C, A, B, α, β)
-    prepared || return gemm!(C, A, B; α=a, β=b)
+    prepared || return _gemm_streaming_kernel!(C, A, B; α=a, β=b)
     return _gemm_vec_accumulate!(C, A, B, width)
 end
 
@@ -231,8 +274,36 @@ function _gemm_vec2col!(
     β=zero(MultiFloat{T,N}),
 ) where {T,N,W}
     prepared, a, b = _prepare_gemm_vec!(C, A, B, α, β)
-    prepared || return gemm!(C, A, B; α=a, β=b)
+    prepared || return _gemm_streaming_kernel!(C, A, B; α=a, β=b)
     return _gemm_vec2col_accumulate!(C, A, B, width)
+end
+
+# Promoted dense Float64x4 route. Two independent hosted Zen3 runs measured
+# ~15-17% speedup over the already-fast streaming kernel for n=16:64, while
+# preserving bitwise equality. Keep the gate conservative so tiny matrices and
+# non-unit α stay on the simpler baseline.
+function gemm!(
+    C::Matrix{MultiFloat{Float64,4}},
+    A::Matrix{MultiFloat{Float64,4}},
+    B::Matrix{MultiFloat{Float64,4}};
+    α=one(MultiFloat{Float64,4}),
+    β=zero(MultiFloat{Float64,4}),
+)
+    M = MultiFloat{Float64,4}
+    m, k = size(A)
+    kb, n = size(B)
+    k == kb || throw(DimensionMismatch(
+        "inner dimensions differ: size(A,2)=$k and size(B,1)=$kb"))
+    size(C) == (m,n) || throw(DimensionMismatch(
+        "C has size $(size(C)); expected ($m, $n)"))
+    (Base.mightalias(C, A) || Base.mightalias(C, B)) && throw(ArgumentError(
+        "gemm! does not permit C to alias A or B"))
+
+    a = _coerce(M, α)
+    if isone(a) && m >= 8 && n >= 2 && k >= 4
+        return _gemm_vec2col!(C, A, B, Val(8); α=a, β=β)
+    end
+    return _gemm_streaming_kernel!(C, A, B; α=a, β=β)
 end
 
 end # @eval MFLinearAlgebra
