@@ -72,14 +72,13 @@ function _chol_trailing_update_vec8!(
     p0::Int,
     p1::Int,
 )
-    M = MultiFloat{Float64,4}
     V = MultiFloatVec{8,Float64,4}
     n = size(A,1)
     row0 > n && return A
 
     @inbounds for p in p0:p1
         for j in row0:n
-            coeff = -A[j,p]
+            coeff = A[j,p]
             nrows = n - j + 1
             full = nrows - rem(nrows, 8)
             stop = j + full - 1
@@ -87,12 +86,12 @@ function _chol_trailing_update_vec8!(
             for i0 in j:8:stop
                 cv = _load_mfvec(V, A, i0, j)
                 av = _load_mfvec(V, A, i0, p)
-                cv = fma_fast(av, V(coeff), cv)
+                cv = fma_fast(-av, V(coeff), cv)
                 _store_mfvec!(A, i0, j, cv)
             end
 
             for i in stop + 1:n
-                A[i,j] = fma_fast(A[i,p], coeff, A[i,j])
+                A[i,j] = fma_fast(-A[i,p], coeff, A[i,j])
             end
         end
     end
@@ -129,7 +128,7 @@ function _chol_factor_panel_vec8!(
             sv = _load_mfvec(V, A, i0, j)
             for p in j0:j-1
                 av = _load_mfvec(V, A, i0, p)
-                sv = fma_fast(av, V(-A[j,p]), sv)
+                sv = fma_fast(-av, V(A[j,p]), sv)
             end
             for lane in 1:8
                 A[i0 + lane - 1,j] = div_r(sv[lane], diag)
