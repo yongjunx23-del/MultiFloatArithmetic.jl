@@ -3,8 +3,8 @@
 
 Verification-oriented arithmetic kernels for fixed-length `MultiFloats.jl`
 expansions. The top-level API contains only the empirically validated fused
-multiply-add research kernel. Rejected or not-yet-accepted candidates live in
-[`MultiFloatArithmetic.Experimental`](@ref).
+multiply-add research kernel. Rejected, reference-only, or not-yet-accepted
+candidates live in [`MultiFloatArithmetic.Experimental`](@ref).
 """
 module MultiFloatArithmetic
 
@@ -154,8 +154,8 @@ end
     # that cancellation can violate its magnitude precondition. Use only general
     # TwoSum transforms in the compression, then delegate final canonical
     # non-overlap restoration to MultiFloats.renormalize. This is intentionally
-    # the conservative correctness baseline; a fixed-cost branch-free repair is
-    # evaluated separately before it can replace this path.
+    # the conservative correctness baseline; a future fixed-cost replacement
+    # must prove source-specific intermediate bounds before promotion.
     w0, w1 = two_sum(b, a1)
     w1, w2 = two_sum(w1, a2)
     w2, w3 = two_sum(w2, a3)
@@ -171,8 +171,7 @@ end
 Evaluate the 2-, 3-, or 4-limb fused multiply-add research kernel for scalar
 `MultiFloat` values or lane-wise for `MultiFloatVec` values. The x2/x3 paths are
 fixed-cost arithmetic networks; x4 currently ends in a conservative
-`renormalize` fallback while its cancellation-safe fixed-cost replacement is
-being verified.
+`renormalize` fallback.
 
 See `docs/NUMERICAL_CONTRACT.md` before using this operation in residual,
 refinement, stopping-criterion, or certificate code.
@@ -200,9 +199,9 @@ end
 """
     MultiFloatArithmetic.Experimental
 
-Research candidates that remain useful for reproducibility but have not passed
-the acceptance gates for the top-level API. Their names, behavior, and presence
-may change without deprecation during the 0.x series.
+Research candidates and correctness oracles that have not passed the acceptance
+gates for the top-level API. Their names, behavior, and presence may change
+without deprecation during the 0.x series.
 """
 module Experimental
 
@@ -212,9 +211,11 @@ import MultiFloats: MultiFloat, MultiFloatVec, div_r, fast_two_sum, mfadd,
 
 export div_digits, div_digits_limbs
 export mul_scalar, mul_scalar_limbs
+export reference_add, reference_fma, reference_mul, reference_sub
 
 include("mul_scalar.jl")
 include("division_digits.jl")
+include("reference_arithmetic.jl")
 
 end # module Experimental
 
