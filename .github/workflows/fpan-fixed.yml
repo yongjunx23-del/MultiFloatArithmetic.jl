@@ -13,9 +13,13 @@ permissions:
 
 jobs:
   verify-repair-contract:
-    name: x4 repaired final-compression contract
+    name: x4 repaired contract p=${{ matrix.precision }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        precision: [24, 53]
     steps:
       - uses: actions/checkout@v4
       - name: Check out pinned FPANVerifier
@@ -32,18 +36,17 @@ jobs:
         run: bash verification/install_z3.sh .verification-tools
       - name: Verify cancellation-safe final compression
         env:
-          FPAN_LOG: fpan-fma4-repair-contract.log
           FPAN_TIMEOUT_SECONDS: '600'
-          PYTHONUNBUFFERED: '1'
         run: >-
-          bash verification/run_fpan.sh
+          bash .github/scripts/run_fpan_fixed_precision.sh
           .verification-tools/FPANVerifier
+          ${{ matrix.precision }}
           verification/fma4_repair_contract.fpan
       - name: Upload verification log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fpan-fma4-repair-contract-log
-          path: fpan-fma4-repair-contract.log
+          name: fpan-fma4-repair-p${{ matrix.precision }}-log
+          path: fpan-fixed-p${{ matrix.precision }}.log
           if-no-files-found: warn
           retention-days: 30
