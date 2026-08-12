@@ -33,7 +33,6 @@
     end
 
     function check_fma5_case(x::T, y::T, c::T)
-        # Product primitive contract remains explicit inside the direct FMA.
         for i in 1:5, j in 1:5
             xi = x._limbs[i]
             yj = y._limbs[j]
@@ -135,3 +134,4 @@
 end
 
 include("fma6_fma8_safe.jl")
+include("inv8_safe.jl")
