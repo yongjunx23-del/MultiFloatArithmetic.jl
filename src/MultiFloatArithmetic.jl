@@ -218,11 +218,13 @@ export mul_safe, mul_safe_limbs
 export mul5_safe, mul5_safe_limbs, mul6_safe, mul6_safe_limbs
 export mul7_safe, mul7_safe_limbs, mul8_safe, mul8_safe_limbs
 export mul_scalar, mul_scalar_limbs
-export reference_add, reference_fma, reference_mul, reference_sub
+export reference_add, reference_div, reference_fma, reference_mul, reference_recip,
+    reference_sub
 
 include("mul_scalar.jl")
 include("division_digits.jl")
 include("reference_arithmetic.jl")
+include("reference_nondyadic.jl")
 include("add_safe.jl")
 include("mul_safe.jl")
 include("fma5_safe.jl")
