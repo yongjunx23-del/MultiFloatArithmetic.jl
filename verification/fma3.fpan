@@ -71,12 +71,13 @@ two_sum p00 c0
 two_sum c0 p01
 two_sum p01 e01
 
-# w0, w1 = fast_two_sum(b, m1)
-# w1, w2 = two_sum(w1, m2)
-# z0, rho = two_sum(w0, w1)
-# z1, z2 = fast_two_sum(rho, w2)
+# First output compression.
 fast_two_sum p00 c0
 two_sum      c0 p01
+two_sum      p00 c0
+fast_two_sum c0 p01
+
+# Proof-driven minimal repair selected by the A/B in draft PR #9.
 two_sum      p00 c0
 fast_two_sum c0 p01
 

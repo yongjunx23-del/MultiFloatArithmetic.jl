@@ -86,6 +86,13 @@ end
     w1, w2 = two_sum(w1, m2)
     z0, rho = two_sum(w0, w1)
     z1, z2 = fast_two_sum(rho, w2)
+
+    # FPANVerifier refuted the leading non-overlap relation after the first
+    # compression. A/B verification showed that one additional TwoSum followed
+    # by a tail FastTwoSum is the smallest fixed-cost repair that proves both
+    # output non-overlap relations. Do not remove or reorder these operations.
+    z0, z1 = two_sum(z0, z1)
+    z1, z2 = fast_two_sum(z1, z2)
     return (z0, z1, z2)
 end
 
