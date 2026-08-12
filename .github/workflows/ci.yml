@@ -37,6 +37,20 @@ jobs:
       - name: Test with bounds checking
         run: julia --check-bounds=yes --project=. -e 'using Pkg; Pkg.test(; coverage=false)'
 
+  div5-edge-diagnostic:
+    name: Float64x5 division edge diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+      - name: Instantiate
+        run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Classify identity, power, and domain slices
+        run: julia --project=. benchmark/div5_edge_diagnostic.jl
+
   smoke-benchmark:
     name: Arithmetic smoke and codegen
     runs-on: ubuntu-latest
