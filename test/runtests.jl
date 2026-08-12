@@ -56,6 +56,8 @@ end
     @test :div_digits ∉ public_names
     @test :mul_scalar ∉ public_names
     @test :reference_add ∉ public_names
+    @test :reference_recip ∉ public_names
+    @test :reference_div ∉ public_names
     @test :fma5_safe in experimental_names
     @test :add_safe in experimental_names
     @test :add5_safe in experimental_names
@@ -73,6 +75,8 @@ end
     @test :reference_sub in experimental_names
     @test :reference_mul in experimental_names
     @test :reference_fma in experimental_names
+    @test :reference_recip in experimental_names
+    @test :reference_div in experimental_names
 
     T5 = MultiFloat{Float64,5}
     @test_throws ArgumentError fma_fast(T5(1.0), T5(1.0), T5(0.0))
@@ -240,6 +244,7 @@ end
 include("mul_scalar.jl")
 include("division_digits.jl")
 include("reference_arithmetic.jl")
+include("reference_nondyadic.jl")
 include("add5_safe.jl")
 include("add6_add8_safe.jl")
 include("mul5_safe.jl")
