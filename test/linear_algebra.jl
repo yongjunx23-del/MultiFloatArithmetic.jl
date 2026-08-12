@@ -47,7 +47,9 @@ end
 @testset "MFLinearAlgebra API and FMA chaining" begin
     Random.seed!(0x1a_2026)
 
-    for M in (Float64x2, Float64x4)
+    # Cover every public hot width/type combination claimed by MFLinearAlgebra.
+    for M in (Float32x2, Float32x3, Float32x4,
+              Float64x2, Float64x3, Float64x4)
         tol = la_tolerance(M)
 
         @testset "$(M) dot/axpy" begin
