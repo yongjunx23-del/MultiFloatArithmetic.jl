@@ -12,10 +12,14 @@ specs=("$@")
 log_file=${FPAN_LOG:-fpan-verification.log}
 timeout_seconds=${FPAN_TIMEOUT_SECONDS:-600}
 
+# FPANVerifier validates every explicit fast_two_sum command unconditionally.
+# Its optional --check-fast-two-sum flag additionally asks whether each ordinary
+# two_sum could be replaced by fast_two_sum; that optimization search is not a
+# proof obligation here and makes the larger source-mirrored networks needlessly
+# expensive.
 set +e
 timeout --signal=TERM --kill-after=15s "${timeout_seconds}s" \
     python3 -u "$verifier_dir/verify_fpan.py" \
-    --check-fast-two-sum \
     "${specs[@]}" \
     >"$log_file" 2>&1
 status=$?

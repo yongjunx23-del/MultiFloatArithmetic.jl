@@ -40,11 +40,19 @@ the discarded rounding residual available to the verifier.
 
 The strict CI command checks:
 
-1. every `fast_two_sum` operand pair satisfies its magnitude precondition;
+1. every explicit `fast_two_sum` operand pair satisfies its magnitude
+   precondition;
 2. the final x2, x3, and x4 output limbs form the expected
    `strongly_dominates` chain.
 
-Each limb count runs as an independent matrix job with a three-minute solver
+FPANVerifier validates explicit `fast_two_sum` commands unconditionally. CI does
+not pass the verifier's optional `--check-fast-two-sum` flag because that flag
+also launches an optimization query for every ordinary `two_sum`, asking whether
+it could be replaced by `fast_two_sum`. Those replacement queries do not
+strengthen the obligations above and caused the larger source-mirrored networks
+to exhaust the solver budget.
+
+Each limb count runs as an independent matrix job with a ten-minute process
 limit, so a hard network cannot hide the status of the other two.
 
 These obligations establish structural validity of the accumulation network;
