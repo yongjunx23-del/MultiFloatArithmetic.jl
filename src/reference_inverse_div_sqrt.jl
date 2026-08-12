@@ -14,8 +14,8 @@ export reference_inv, reference_div, reference_sqrt
 end
 
 function _stable_pack(
-    ::Type{MultiFloat{T,N}},
-    compute;
+    compute,
+    ::Type{MultiFloat{T,N}};
     max_precision::Int = 32768,
 ) where {T,N}
     p = _reference_start_precision(T, Val{N}())
